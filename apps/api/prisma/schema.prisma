@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  integrations Integrations[]
+  meetings     Meeting[]
+  teamMembers  TeamMember[]
+  tasks        Task[]
+  syncRuns     SyncRun[]
+  questions    ScheduledQuestion[]
+}
+
+model Integrations {
+  id            String    @id @default(uuid())
+  userId        String
+  provider      String    // google, slack, jira, etc.
+  accessToken   String?   // Encrypted or just stored if safe (Prompt says encrypted blob)
+  refreshToken  String?
+  scopes        String?
+  expiresAt     DateTime?
+  encryptedBlob String?   // For storing sensitive tokens encrypted
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+}
+
+model Meeting {
+  id               String   @id @default(uuid())
+  userId           String
+  calendarEventId  String
+  title            String
+  startTime        DateTime
+  endTime          DateTime
+  attendeesJson    String   // JSON string of attendees
+  location         String?
+  description      String?
+  meetLink         String?
+  htmlLink         String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TeamMember {
+  id          String   @id @default(uuid())
+  userId      String
+  externalId  String?  // ID from Slack or other source
+  name        String
+  email       String?
+  avatarUrl   String?
+  sourcesJson String   // JSON array of sources ["slack", "google", "jira"]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Task {
+  id            String    @id @default(uuid())
+  userId        String
+  externalId    String
+  title         String
+  status        String
+  assigneeEmail String?
+  dueDate       DateTime?
+  priority      String?
+  isBlocked     Boolean   @default(false)
+  blockedByJson String?   // JSON details of blocking issues
+  rawJson       String?   // Full payload for future use
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SyncRun {
+  id         String   @id @default(uuid())
+  userId     String
+  provider   String
+  status     String   // running, success, failed
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+  error      String?
+  
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ScheduledQuestion {
+  id            String   @id @default(uuid())
+  userId        String
+  title         String   // E.g. "Daily Standup"
+  text          String   // "What are you working on today?"
+  targetType    String   // 'channel' or 'dm'
+  targetId      String?  // Channel ID to post to, or null for 'all team members' (DMs)
+  frequency     String   // 'daily', 'weekly', 'once'
+  timeOfDay     String   // "09:00"
+  isActive      Boolean  @default(true)
+  lastSentAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

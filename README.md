@@ -1,196 +1,92 @@
-# Centri – Personal Work Clarity
+# Centri.ai Monorepo
 
-> Understand where your work energy went today.
+Centri.ai is a pre-meeting and day-start dashboard for managers.
 
-Privacy-first work tracking tool with Chrome extension and beautiful dashboard.
+## Structure
+- `apps/web`: Next.js 14 App Router, Tailwind, Shadcn UI.
+- `apps/api`: NestJS, Prisma, PostgreSQL.
 
-## 🎯 Product Philosophy
+## Prerequisites
+- Node.js >= 18
+- pnpm
+- Docker & Docker Compose
 
-- **Not time tracking** – This is a daily mirror
-- **Not surveillance** – No keystroke logging, no content reading
-- **Not productivity scoring** – No judgment, no metrics
-- **Privacy-first** – Track domains and duration only
-- **Calm & reflective UX** – Black & white minimalism
+## Getting Started
 
-## 🏗️ Tech Stack
+### 1. Environment Variables
 
-### Frontend (Dashboard)
-- Next.js 14 (App Router)
-- TypeScript
-- Tailwind CSS
-- Framer Motion
-- Black & white design only
+Create `apps/api/.env`:
+```bash
+DATABASE_URL="postgresql://postgres:password@localhost:5432/centri_api?schema=public"
+ENCRYPTION_KEY="super_secret_encryption_key_32_chars_long"
+API_BASE_URL="http://localhost:3001"
 
-### Backend
-- Next.js API Routes
-- Prisma ORM
-- SQLite (dev) / Postgres-ready
+# OAuth Credentials (get these from provider consoles)
+GOOGLE_CLIENT_ID="..."
+GOOGLE_CLIENT_SECRET="..."
+SLACK_CLIENT_ID="..."
+SLACK_CLIENT_SECRET="..."
+JIRA_CLIENT_ID="..."
+JIRA_CLIENT_SECRET="..."
+```
 
-### Browser Extension
-- Chrome Manifest v3
-- TypeScript
-- Service worker for background tracking
-- Content scripts for activity detection
-
-## 🚀 Quick Start
-
-### 1. Install Dependencies
+### 2. Install Dependencies
 
 ```bash
-npm install
+pnpm install
 ```
 
-### 2. Set Up Database
+### 3. Start Database
 
 ```bash
-npx prisma db push
+docker compose up -d
 ```
 
-This creates the SQLite database at `prisma/dev.db`.
+Wait for Postgres to accept connections.
 
-### 3. Build Chrome Extension
-
-The extension uses TypeScript and needs to be compiled:
+### 4. Setup Database
 
 ```bash
-# Install TypeScript globally if needed
-npm install -g typescript
-
-# Compile extension files
-cd extension
-tsc background/rules.ts --outDir . --target ES2017 --module ES2020 --esModuleInterop
-tsc background/tracker.ts --outDir . --target ES2017 --module ES2020 --esModuleInterop
-tsc background/aggregator.ts --outDir . --target ES2017 --module ES2020 --esModuleInterop
-tsc background/sync.ts --outDir . --target ES2017 --module ES2020 --esModuleInterop
-tsc background/service_worker.ts --outDir . --target ES2017 --module ES2020 --esModuleInterop
-tsc content/activity_listener.ts --outDir . --target ES2017 --module ES2020 --esModuleInterop
-tsc ui/popup.ts --outDir . --target ES2017 --module ES2020 --esModuleInterop
-cd ..
+cd apps/api
+npx prisma migrate dev --name init
+npm run seed
 ```
+*(The seed script populates the dashboard with mock tasks, meetings, and team members for the default user)*
 
-### 4. Load Extension in Chrome
+### 5. Run Applications
 
-1. Open Chrome and go to `chrome://extensions/`
-2. Enable "Developer mode" (top right)
-3. Click "Load unpacked"
-4. Select the `extension` folder
-
-### 5. Run Dashboard
-
+From the root:
 ```bash
-npm run dev
+pnpm dev
+```
+- Web: [http://localhost:3000](http://localhost:3000)
+- API: [http://localhost:3001](http://localhost:3001)
+
+## Features
+
+- **Dashboard**: View today's focus tasks, blockers, and upcoming meetings.
+- **Team**: View discovered team members.
+- **Integrations**: Connect Google, Slack, and Jira (OAuth flows require correct Client IDs).
+- **Sync**: Triggers fetch from connected providers.
+
+## Testing
+
+Run unit tests for API:
+```bash
+pnpm --filter api test
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+## Changelog
 
-## 📦 Project Structure
-
-```
-centri/
-├── app/                    # Next.js App Router
-│   ├── api/
-│   │   └── sync/          # Extension sync endpoint
-│   ├── page.tsx           # Today dashboard
-│   ├── layout.tsx         # Root layout
-│   └── globals.css        # Global styles
-│
-├── components/            # React components
-│   ├── CategoryCard.tsx   # Work category cards
-│   ├── Timeline.tsx       # Flow of the day
-│   ├── OutputSection.tsx  # What came out of it
-│   └── DailyInsight.tsx   # AI insight
-│
-├── extension/             # Chrome extension
-│   ├── manifest.json      # Extension config
-│   ├── background/        # Service worker
-│   │   ├── rules.ts       # Domain categorization
-│   │   ├── tracker.ts     # Activity tracking
-│   │   ├── aggregator.ts  # Data aggregation
-│   │   ├── sync.ts        # Backend sync
-│   │   └── service_worker.ts
-│   ├── content/
-│   │   └── activity_listener.ts
-│   └── ui/
-│       ├── popup.html
-│       ├── popup.css
-│       └── popup.ts
-│
-├── lib/                   # Utilities
-│   ├── prisma.ts          # DB client
-│   └── utils.ts           # Helpers
-│
-├── prisma/
-│   └── schema.prisma      # Database schema
-│
-└── package.json
-```
-
-## 🔒 Privacy Guarantees
-
-### What We Track
-- ✅ Domain only (e.g. `notion.so`)
-- ✅ Category (communication, building, research, meetings, admin)
-- ✅ Duration (rounded to nearest second)
-- ✅ Timestamp (rounded)
-
-### What We DON'T Track
-- ❌ Page content
-- ❌ Typed text
-- ❌ Incognito tabs
-- ❌ Screenshots
-- ❌ URLs (only domains)
-
-## 📊 Data Model
-
-### DailySummary
-- Total active time
-- Category breakdowns
-- Top 5 domains
-- Longest focus window
-- Context switch count
-
-### ActivityLog
-- Domain
-- Category
-- Duration
-- Timestamp
-
-## 🎨 UI Principles
-
-- **Black & white only** – No colors, no gradients
-- **Large typography** – Confident, readable
-- **Generous whitespace** – Calm, breathable
-- **Subtle motion** – Framer Motion for polish
-- **YC aesthetic** – Linear × Vercel × Notion
-
-## 🔧 Configuration
-
-### Adding Custom Domain Rules
-
-Edit `extension/background/rules.ts`:
-
-```typescript
-export const CATEGORY_RULES = {
-  communication: ['slack.com', 'gmail.com', ...],
-  building: ['github.com', 'figma.com', ...],
-  // Add your domains here
-};
-```
-
-## 🚧 Future Roadmap
-
-- [ ] Magic link authentication
-- [ ] Gmail integration (emails sent)
-- [ ] Calendar integration (meetings attended)
-- [ ] Google Docs integration (documents edited)
-- [ ] Weekly/monthly views
-- [ ] Export data
-- [ ] Team insights (optional, privacy-first)
-
-## 📝 License
-
-MIT
-
----
-
-**Built with care for knowledge workers who want clarity, not surveillance.**
+### v1.1.0 - Dashboard UI Overhaul (Executive Briefing)
+- **UI Refresh**:
+  - Added "Manager Attention" strip with key metrics (Blocked, Overdue, Next Meeting).
+  - Improved "Today's Focus" card: Grouped by urgency (Overdue vs Today vs Soon).
+  - Redesigned "Blockers" card: cleaner look, added blocked-time context.
+  - "Task Health": Added drill-down accordion to view specific at-risk tasks per member.
+  - "Meetings": Added "Next Meeting Brief" with at-risk task warnings.
+- **Data**:
+  - Backend now serves enriched task/meeting data including creation/update timestamps.
+  - New `dashboard-utils` library for shared prioritization logic and Human Identity formatting.
+- **Dev**:
+  - Added unit tests for dashboard logic (`apps/web/src/lib/dashboard-utils.test.ts`).
