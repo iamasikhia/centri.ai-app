@@ -18,20 +18,25 @@ export class GithubProvider implements IProvider {
         const clientId = this.config.get('GITHUB_CLIENT_ID');
         const clientSecret = this.config.get('GITHUB_CLIENT_SECRET');
 
+        const params = {
+            client_id: clientId,
+            client_secret: clientSecret,
+            code,
+            // redirect_uri: redirectUri, // Omitted to let GitHub use the default configured one
+            state: 'random_state_string'
+        };
+        console.log('[Github] Exchanging code. URI:', redirectUri, 'ClientID:', clientId);
+
         const response = await axios.post(
             'https://github.com/login/oauth/access_token',
-            {
-                client_id: clientId,
-                client_secret: clientSecret,
-                code,
-                redirect_uri: redirectUri,
-            },
+            params,
             {
                 headers: { Accept: 'application/json' },
             }
         );
 
         if (response.data.error) {
+            console.error('[Github] Exchange Error:', response.data);
             throw new Error(response.data.error_description || response.data.error);
         }
 
@@ -95,5 +100,81 @@ export class GithubProvider implements IProvider {
             tasks,
             teamMembers
         };
+    }
+
+    async fetchActivity(token: string): Promise<any> {
+        try {
+            const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' };
+
+            // 1. Get recent repos (limit 5)
+            const reposRes = await axios.get('https://api.github.com/user/repos', {
+                headers,
+                params: { sort: 'pushed', direction: 'desc', per_page: 5 }
+            });
+
+            const repos = reposRes.data;
+            const twoWeeksAgo = new Date();
+            twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+
+            const activity = {
+                commits: [],
+                prs: [],
+                releases: []
+            };
+
+            await Promise.all(repos.map(async (repo: any) => {
+                // Commits
+                try {
+                    const commitsRes = await axios.get(`https://api.github.com/repos/${repo.full_name}/commits`, {
+                        headers, params: { since: twoWeeksAgo.toISOString(), per_page: 20 }
+                    });
+                    activity.commits.push(...commitsRes.data.map((c: any) => ({
+                        repo: repo.name,
+                        message: c.commit.message,
+                        author: c.commit.author.name,
+                        date: c.commit.author.date,
+                        url: c.html_url
+                    })));
+                } catch (e) { }
+
+                // PRs
+                try {
+                    const prsRes = await axios.get(`https://api.github.com/repos/${repo.full_name}/pulls`, {
+                        headers, params: { state: 'all', sort: 'updated', direction: 'desc', per_page: 10 }
+                    });
+                    activity.prs.push(...prsRes.data.map((pr: any) => ({
+                        repo: repo.name,
+                        title: pr.title,
+                        state: pr.state,
+                        merged: !!pr.merged_at,
+                        created_at: pr.created_at,
+                        merged_at: pr.merged_at,
+                        closed_at: pr.closed_at,
+                        user: pr.user.login,
+                        url: pr.html_url
+                    })));
+                } catch (e) { }
+
+                // Releases
+                try {
+                    const relRes = await axios.get(`https://api.github.com/repos/${repo.full_name}/releases`, {
+                        headers, params: { per_page: 3 }
+                    });
+                    activity.releases.push(...relRes.data.map((r: any) => ({
+                        repo: repo.name,
+                        name: r.name,
+                        tag: r.tag_name,
+                        published_at: r.published_at,
+                        url: r.html_url
+                    })));
+                } catch (e) { }
+            }));
+
+            return activity;
+
+        } catch (e) {
+            console.error('[Github] Fetch Activity Error', e.message);
+            return { commits: [], prs: [], releases: [] };
+        }
     }
 }

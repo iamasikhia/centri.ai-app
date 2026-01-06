@@ -10,7 +10,8 @@ export class GoogleProvider implements IProvider {
   getAuthUrl(redirectUri: string): string {
     const clientId = this.config.get('GOOGLE_CLIENT_ID');
     const scopes = [
-      'https://www.googleapis.com/auth/calendar.readonly',
+      'https://www.googleapis.com/auth/calendar',
+      'https://www.googleapis.com/auth/tasks',
       'https://www.googleapis.com/auth/userinfo.email',
       'https://www.googleapis.com/auth/userinfo.profile'
     ].join(' ');
@@ -22,15 +23,20 @@ export class GoogleProvider implements IProvider {
     const clientId = this.config.get('GOOGLE_CLIENT_ID');
     const clientSecret = this.config.get('GOOGLE_CLIENT_SECRET');
 
-    const response = await axios.post('https://oauth2.googleapis.com/token', {
-      code,
-      client_id: clientId,
-      client_secret: clientSecret,
-      redirect_uri: redirectUri,
-      grant_type: 'authorization_code',
-    });
-
-    return response.data;
+    try {
+      const response = await axios.post('https://oauth2.googleapis.com/token', {
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
+      });
+      return response.data;
+    } catch (error) {
+      console.error('[GoogleProvider] Token Exchange Failed:', error.response?.data || error.message);
+      console.error('[GoogleProvider] Redirect URI used:', redirectUri);
+      throw error;
+    }
   }
 
   async syncData(userId: string, tokens: any): Promise<SyncResult> {
@@ -54,17 +60,28 @@ export class GoogleProvider implements IProvider {
     }
 
     return {
-      meetings: meetings.map(m => ({
-        calendarEventId: m.id,
-        title: m.summary || 'No Title',
-        startTime: m.start.dateTime || m.start.date,
-        endTime: m.end.dateTime || m.end.date,
-        attendeesJson: JSON.stringify(m.attendees || []),
-        location: m.location || null,
-        description: m.description || null,
-        meetLink: m.hangoutLink || null,
-        htmlLink: m.htmlLink || null
-      }))
+      meetings: meetings.map(m => {
+        const start = new Date(m.start.dateTime || m.start.date);
+        const end = new Date(m.end.dateTime || m.end.date);
+        const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
+
+        return {
+          calendarEventId: m.id,
+          title: m.summary || 'No Title',
+          startTime: start,
+          endTime: end,
+          attendeesJson: JSON.stringify(m.attendees || []),
+          location: m.location || null,
+          description: m.description || null,
+          meetLink: m.hangoutLink || null,
+          htmlLink: m.htmlLink || null,
+          // Extra fields for classification
+          rawAttendeesCount: (m.attendees || []).length,
+          hasConference: !!m.conferenceData || !!m.hangoutLink,
+          isSelfOrganized: m.organizer?.self || false,
+          durationMinutes: durationMinutes
+        };
+      })
     };
   }
 }

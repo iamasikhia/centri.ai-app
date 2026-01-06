@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Check, X, ExternalLink } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const PROVIDERS = [
   {
@@ -14,26 +15,20 @@ const PROVIDERS = [
     logoUrl: 'https://fonts.gstatic.com/s/i/productlogos/calendar_2020q4/v13/web-64dp/logo_calendar_2020q4_color_2x_web_64dp.png'
   },
   {
+    id: 'gmail',
+    name: 'Gmail',
+    description: 'Fetch recent emails as updates.',
+    domain: 'gmail.com',
+    logoUrl: 'https://cdn.worldvectorlogo.com/logos/gmail-icon.svg'
+  },
+  {
     id: 'slack',
     name: 'Slack',
     description: 'Discover team members.',
     domain: 'slack.com',
     logoUrl: 'https://cdn.worldvectorlogo.com/logos/slack-new-logo.svg'
   },
-  {
-    id: 'jira',
-    name: 'Jira Cloud',
-    description: 'Fetch tasks and blockers.',
-    domain: 'jira.com',
-    logoUrl: 'https://cdn.worldvectorlogo.com/logos/jira-3.svg'
-  },
-  {
-    id: 'clickup',
-    name: 'ClickUp',
-    description: 'Manage tasks and spaces.',
-    domain: 'clickup.com',
-    logoUrl: 'https://cdn.worldvectorlogo.com/logos/clickup.svg'
-  },
+
   {
     id: 'github',
     name: 'GitHub',
@@ -95,14 +90,16 @@ const PROVIDERS = [
     name: 'Fathom',
     description: 'AI Meeting Recorder.',
     domain: 'fathom.video',
-    logoUrl: 'https://logo.clearbit.com/fathom.video'
+    logoUrl: 'https://fathom.video/apple-touch-icon.png'
   }
 ];
 
 export default function IntegrationsPage() {
   const [connections, setConnections] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const fetchStatus = async () => {
+    setLoading(true);
     try {
       const res = await fetch('http://localhost:3001/integrations/status', {
         headers: { 'x-user-id': 'default-user-id' }
@@ -113,6 +110,8 @@ export default function IntegrationsPage() {
       }
     } catch (e) {
       console.warn("Failed to fetch integration status", e);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -129,7 +128,7 @@ export default function IntegrationsPage() {
   }, []);
 
   const handleConnect = async (provider: string) => {
-    const stubs = ['google_chat', 'google_drive', 'google_docs', 'notion', 'zoom', 'google_meet', 'microsoft_teams', 'fathom'];
+    const stubs = ['google_chat', 'notion', 'microsoft_teams', 'fathom'];
     if (stubs.includes(provider)) {
       const name = PROVIDERS.find(p => p.id === provider)?.name || provider;
       alert(`${name} stub implemented. Assume connected for demo.`);
@@ -159,6 +158,30 @@ export default function IntegrationsPage() {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-6 max-w-4xl mx-auto">
+        <div>
+          <Skeleton className="h-9 w-48 mb-2" />
+          <Skeleton className="h-5 w-64" />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {Array.from({ length: 15 }).map((_, i) => (
+            <div key={i} className="rounded-xl border bg-card text-card-foreground shadow-sm h-[200px] p-6 flex flex-col items-center gap-4">
+              <Skeleton className="w-16 h-16 rounded-xl" />
+              <div className="flex-1 w-full space-y-2">
+                <Skeleton className="h-5 w-24 mx-auto" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-2/3 mx-auto" />
+              </div>
+              <Skeleton className="h-8 w-full rounded-md mt-auto" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <div>
@@ -182,10 +205,8 @@ export default function IntegrationsPage() {
                     alt={`${p.name} logo`}
                     className="w-full h-full object-contain"
                     onError={(e) => {
-                      // Fallback to Google Favicon if Clearbit/Provided fails
-                      if (!p.logoUrl) {
-                        (e.target as HTMLImageElement).src = `https://www.google.com/s2/favicons?domain=${p.domain}&sz=64`;
-                      }
+                      // Fallback to Google Favicon
+                      (e.target as HTMLImageElement).src = `https://www.google.com/s2/favicons?domain=${p.domain}&sz=64`;
                     }}
                   />
                 </div>
@@ -200,9 +221,6 @@ export default function IntegrationsPage() {
                 <div className="w-full pt-2 mt-auto">
                   {isConnected ? (
                     <div className="flex flex-col gap-2">
-                      {/* Note: Stubs don't really connect in backend, so showing Connected implies backend state matches. 
-                           For stubs to show connected, backend must return them. 
-                           Currently stub 'handleConnect' just alerts. I'll leave it as is. */}
                       <button
                         onClick={() => handleDisconnect(p.id)}
                         className="w-full py-2 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-colors"

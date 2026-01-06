@@ -2,6 +2,7 @@ export interface SyncResult {
     meetings?: any[];
     tasks?: any[];
     teamMembers?: any[];
+    emails?: any[];
     customData?: any;
 }
 
