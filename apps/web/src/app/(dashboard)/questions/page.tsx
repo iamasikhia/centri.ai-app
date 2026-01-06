@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Trash2, Play, Check, Clock, Hash, MessageCircle } from "lucide-react";
+import { Skeleton } from '@/components/ui/skeleton';
+import { Plus, Trash2, Play, Check, Clock, Hash, MessageCircle, Pencil } from "lucide-react";
 
 interface ScheduledQuestion {
     id: string;
@@ -26,6 +27,7 @@ export default function QuestionsPage() {
     const [channels, setChannels] = useState<Channel[]>([]);
     const [loading, setLoading] = useState(true);
     const [isCreating, setIsCreating] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
 
     // Form State
     const [title, setTitle] = useState('');
@@ -35,6 +37,8 @@ export default function QuestionsPage() {
     const [frequency, setFrequency] = useState('daily');
     const [timeOfDay, setTimeOfDay] = useState('09:00');
 
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
     useEffect(() => {
         fetchData();
     }, []);
@@ -43,33 +47,41 @@ export default function QuestionsPage() {
         setLoading(true);
         try {
             // Fetch Channels
-            const channelsRes = await fetch('http://localhost:3001/slack/channels', {
+            const channelsRes = await fetch(`${API_URL}/slack/channels`, {
                 headers: { 'x-user-id': 'default-user-id' }
             });
             if (channelsRes.ok) {
                 const data = await channelsRes.json();
                 setChannels(data.channels || []);
+            } else {
+                console.error('Failed to fetch channels:', await channelsRes.text());
             }
 
             // Fetch Questions
-            const questionsRes = await fetch('http://localhost:3001/slack/questions', {
+            const questionsRes = await fetch(`${API_URL}/slack/questions`, {
                 headers: { 'x-user-id': 'default-user-id' }
             });
             if (questionsRes.ok) {
                 const data = await questionsRes.json();
                 setQuestions(data);
+            } else {
+                console.error('Failed to fetch questions:', await questionsRes.text());
             }
         } catch (e) {
-            console.error(e);
+            console.error('Fetch error:', e);
         } finally {
             setLoading(false);
         }
     };
 
-    const handleCreate = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            const res = await fetch('http://localhost:3001/slack/questions', {
+            const url = editingId
+                ? `${API_URL}/slack/questions/${editingId}`
+                : `${API_URL}/slack/questions`;
+
+            const res = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -81,44 +93,100 @@ export default function QuestionsPage() {
             });
             if (res.ok) {
                 setIsCreating(false);
-                setTitle(''); setText('');
+                setEditingId(null);
+                setTitle(''); setText(''); setTargetId('');
                 fetchData();
+                alert(editingId ? 'Question updated successfully!' : 'Question scheduled successfully!');
+            } else {
+                const error = await res.text();
+                console.error('Submit failed:', error);
+                alert(`Failed to ${editingId ? 'update' : 'create'} question: ${error}`);
             }
         } catch (e) {
-            console.error(e);
+            console.error('Submit error:', e);
+            alert(`Failed to ${editingId ? 'update' : 'create'} question. Check console for details.`);
         }
+    };
+
+    const handleEdit = (question: ScheduledQuestion) => {
+        setEditingId(question.id);
+        setTitle(question.title);
+        setText(question.text);
+        setTargetType(question.targetType);
+        setTargetId(question.targetId || '');
+        setFrequency(question.frequency);
+        setTimeOfDay(question.timeOfDay);
+        setIsCreating(true);
+    };
+
+    const handleCancelEdit = () => {
+        setIsCreating(false);
+        setEditingId(null);
+        setTitle('');
+        setText('');
+        setTargetId('');
     };
 
     const handleDelete = async (id: string) => {
         if (!confirm('Are you sure?')) return;
         try {
-            await fetch(`http://localhost:3001/slack/questions/${id}`, {
+            const res = await fetch(`${API_URL}/slack/questions/${id}`, {
                 method: 'DELETE',
                 headers: { 'x-user-id': 'default-user-id' }
             });
-            fetchData();
+            if (res.ok) {
+                fetchData();
+                alert('Question deleted successfully!');
+            } else {
+                alert('Failed to delete question');
+            }
         } catch (e) {
-            console.error(e);
+            console.error('Delete error:', e);
+            alert('Failed to delete question');
         }
     };
 
     const handleRunNow = async () => {
         try {
-            const res = await fetch('http://localhost:3001/slack/questions/run', {
+            const res = await fetch(`${API_URL}/slack/questions/run`, {
                 method: 'POST',
                 headers: { 'x-user-id': 'default-user-id' }
             });
-            const data = await res.json();
-            alert(`Run complete. Sent: ${data.sent}`);
-            fetchData();
+            if (res.ok) {
+                const data = await res.json();
+                alert(`Run complete! Sent: ${data.sent} question(s)`);
+                fetchData();
+            } else {
+                const error = await res.text();
+                console.error('Run failed:', error);
+                alert(`Failed to run check: ${error}`);
+            }
         } catch (e) {
-            console.error(e);
-            alert('Failed to run');
+            console.error('Run error:', e);
+            alert('Failed to run check. Make sure Slack is connected.');
         }
     };
 
     if (loading && questions.length === 0) {
-        return <div className="p-8 text-center text-muted-foreground">Loading...</div>;
+        return (
+            <div className="space-y-6 max-w-5xl mx-auto p-6">
+                <div className="flex justify-between items-center">
+                    <div className="space-y-2">
+                        <Skeleton className="h-9 w-64" />
+                        <Skeleton className="h-5 w-96" />
+                    </div>
+                    <div className="flex gap-2">
+                        <Skeleton className="h-10 w-24 rounded-md" />
+                        <Skeleton className="h-10 w-32 rounded-md" />
+                    </div>
+                </div>
+                <div className="space-y-4">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                        <Skeleton key={i} className="h-32 w-full rounded-lg" />
+                    ))}
+                </div>
+            </div>
+        );
     }
 
     return (
@@ -131,7 +199,7 @@ export default function QuestionsPage() {
                 <div className="flex gap-2">
                     <button
                         onClick={handleRunNow}
-                        className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-slate-50 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-muted transition-colors"
                     >
                         <Play className="w-4 h-4" /> Run Check
                     </button>
@@ -146,17 +214,17 @@ export default function QuestionsPage() {
 
             {/* Create Form */}
             {isCreating && (
-                <Card className="border-primary/20 bg-slate-50/50">
+                <Card className="border-primary/20 bg-muted/30">
                     <CardHeader>
-                        <CardTitle>Create New Schedule</CardTitle>
+                        <CardTitle>{editingId ? 'Edit Schedule' : 'Create New Schedule'}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <form onSubmit={handleCreate} className="space-y-4">
+                        <form onSubmit={handleSubmit} className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="text-sm font-medium mb-1 block">Internal Title</label>
                                     <input
-                                        className="w-full px-3 py-2 border rounded-md"
+                                        className="w-full px-3 py-2 border rounded-md bg-card"
                                         placeholder="e.g. Daily Standup"
                                         value={title} onChange={e => setTitle(e.target.value)} required
                                     />
@@ -164,7 +232,7 @@ export default function QuestionsPage() {
                                 <div>
                                     <label className="text-sm font-medium mb-1 block">Frequency</label>
                                     <select
-                                        className="w-full px-3 py-2 border rounded-md bg-white"
+                                        className="w-full px-3 py-2 border rounded-md bg-card"
                                         value={frequency} onChange={e => setFrequency(e.target.value)}
                                     >
                                         <option value="daily">Daily (Every Morning)</option>
@@ -178,7 +246,7 @@ export default function QuestionsPage() {
                             <div>
                                 <label className="text-sm font-medium mb-1 block">Question Text</label>
                                 <textarea
-                                    className="w-full px-3 py-2 border rounded-md min-h-[80px]"
+                                    className="w-full px-3 py-2 border rounded-md min-h-[80px] bg-card"
                                     placeholder="What did you work on yesterday? What are you working on today?"
                                     value={text} onChange={e => setText(e.target.value)} required
                                 />
@@ -188,7 +256,7 @@ export default function QuestionsPage() {
                                 <div>
                                     <label className="text-sm font-medium mb-1 block">Post To</label>
                                     <select
-                                        className="w-full px-3 py-2 border rounded-md bg-white"
+                                        className="w-full px-3 py-2 border rounded-md bg-card"
                                         value={targetId} onChange={e => setTargetId(e.target.value)} required
                                     >
                                         <option value="">Select a Channel...</option>
@@ -201,15 +269,17 @@ export default function QuestionsPage() {
                                     <label className="text-sm font-medium mb-1 block">Time (Approx)</label>
                                     <input
                                         type="time"
-                                        className="w-full px-3 py-2 border rounded-md"
+                                        className="w-full px-3 py-2 border rounded-md bg-card"
                                         value={timeOfDay} onChange={e => setTimeOfDay(e.target.value)}
                                     />
                                 </div>
                             </div>
 
                             <div className="flex justify-end gap-2 pt-2">
-                                <button type="button" onClick={() => setIsCreating(false)} className="px-4 py-2 hover:underline">Cancel</button>
-                                <button type="submit" className="px-6 py-2 bg-primary text-primary-foreground rounded-md">Save Schedule</button>
+                                <button type="button" onClick={handleCancelEdit} className="px-4 py-2 hover:underline">Cancel</button>
+                                <button type="submit" className="px-6 py-2 bg-primary text-primary-foreground rounded-md">
+                                    {editingId ? 'Update Schedule' : 'Save Schedule'}
+                                </button>
                             </div>
                         </form>
                     </CardContent>
@@ -220,7 +290,7 @@ export default function QuestionsPage() {
             <div className="grid grid-cols-1 gap-4">
                 {questions.length === 0 && !isCreating && (
                     <div className="text-center py-12 border-2 border-dashed rounded-lg">
-                        <MessageCircle className="w-12 h-12 mx-auto text-slate-300 mb-3" />
+                        <MessageCircle className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
                         <h3 className="text-lg font-medium">No scheduled questions yet</h3>
                         <p className="text-muted-foreground mb-4">Create one to start asking your team automatically.</p>
                         <button
@@ -242,14 +312,17 @@ export default function QuestionsPage() {
                                 <div className="flex items-center justify-between mb-1">
                                     <h3 className="font-semibold text-lg">{q.title}</h3>
                                     <div className="flex items-center gap-2">
-                                        <span className="text-xs px-2 py-1 bg-slate-100 rounded uppercase font-medium text-slate-500">{q.frequency}</span>
-                                        <button onClick={() => handleDelete(q.id)} className="text-red-400 hover:text-red-600 p-1">
+                                        <span className="text-xs px-2 py-1 bg-muted rounded uppercase font-medium text-muted-foreground">{q.frequency}</span>
+                                        <button onClick={() => handleEdit(q)} className="text-primary hover:text-primary/80 p-1" title="Edit">
+                                            <Pencil className="w-4 h-4" />
+                                        </button>
+                                        <button onClick={() => handleDelete(q.id)} className="text-destructive hover:text-destructive/80 p-1" title="Delete">
                                             <Trash2 className="w-4 h-4" />
                                         </button>
                                     </div>
                                 </div>
                                 <p className="text-muted-foreground mb-3">{q.text}</p>
-                                <div className="flex items-center gap-4 text-sm text-slate-500">
+                                <div className="flex items-center gap-4 text-sm text-muted-foreground">
                                     <div className="flex items-center gap-1">
                                         <Hash className="w-3 h-3" />
                                         <span>
@@ -261,7 +334,7 @@ export default function QuestionsPage() {
                                         <span>{q.timeOfDay}</span>
                                     </div>
                                     {q.lastSentAt && (
-                                        <div className="text-xs text-green-600">
+                                        <div className="text-xs text-success">
                                             Last sent: {new Date(q.lastSentAt).toLocaleDateString()}
                                         </div>
                                     )}

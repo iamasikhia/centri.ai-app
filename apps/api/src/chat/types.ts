@@ -5,7 +5,9 @@ export type UIResponse = {
     intent: Intent;
     title?: string;
     subtitle?: string;
+    sessionTitle?: string;
     blocks: UIBlock[];
+    artifact?: any;
     debug?: {
         sourcesChecked: SourceCheck[];
         latencyMs?: number;
@@ -21,6 +23,8 @@ export type Intent =
     | "get_task_health"
     | "is_next_meeting_physical"
     | "help_connect_integrations"
+    | "generate_prd"
+    | "generate_architecture"
     | "unknown";
 
 export type Source = "google_calendar" | "slack" | "google_chat" | "jira" | "clickup";

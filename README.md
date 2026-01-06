@@ -90,3 +90,12 @@ pnpm --filter api test
   - New `dashboard-utils` library for shared prioritization logic and Human Identity formatting.
 - **Dev**:
   - Added unit tests for dashboard logic (`apps/web/src/lib/dashboard-utils.test.ts`).
+
+### v1.2.0 - Updates Feed
+- **New Feature**: "Updates" page aggregating actionable items from Gmail, Slack, GitHub, and Calendar.
+- **Integrations**: Added GitHub integration support.
+- **Backend**: New UpdatesService and Prisma model.
+
+**New Env Vars (API)**:
+- `GITHUB_CLIENT_ID="..."`
+- `GITHUB_CLIENT_SECRET="..."`

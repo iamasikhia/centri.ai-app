@@ -42,7 +42,14 @@ export class IntegrationsController {
         await this.integrationsService.handleCallback(provider, code, userId);
 
         // Redirect back to frontend
-        res.redirect('http://localhost:3000/settings/integrations');
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
+        res.redirect(`${frontendUrl}/settings/integrations`);
+    }
+
+    @Post('sync')
+    async sync(@Req() req) {
+        const userId = req.headers['x-user-id'] || 'default-user-id';
+        return this.integrationsService.sync(userId);
     }
 
     @Get('status')

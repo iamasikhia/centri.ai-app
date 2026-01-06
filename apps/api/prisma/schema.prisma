@@ -19,8 +19,33 @@ model User {
   meetings     Meeting[]
   teamMembers  TeamMember[]
   tasks        Task[]
+  todos        Todo[]
   syncRuns     SyncRun[]
   questions    ScheduledQuestion[]
+  updates      UpdateItem[]
+  opportunities Opportunity[]
+}
+
+model UpdateItem {
+  id String @id @default(cuid())
+  userId String
+  source String // 'gmail'|'slack'|'github'|'google_calendar'
+  type String   // 'email'|'slack_message'|'github_push'|'github_pr'|'calendar_event'
+  severity String // 'urgent'|'important'|'info'
+  title String
+  body String? 
+  occurredAt DateTime
+  externalId String
+  url String?
+  metadata Json?
+  isRead Boolean @default(false)
+  isDismissed Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, source, externalId])
+  @@index([userId, occurredAt])
 }
 
 model Integrations {
@@ -52,6 +77,11 @@ model Meeting {
   description      String?
   meetLink         String?
   htmlLink         String?
+  
+  calendarEventType       String?    // 'meeting'|'task'|'unknown'
+  calendarEventConfidence Float?
+  calendarEventReasoning  String?
+
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -118,4 +148,50 @@ model ScheduledQuestion {
   updatedAt     DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Todo {
+  id               String    @id @default(uuid())
+  userId           String
+  title            String
+  description      String?
+  dueDate          DateTime?
+  priority         String?   // 'low', 'medium', 'high'
+  status           String    @default("pending") // 'pending', 'in_progress', 'completed'
+  ownerId          String?   // For future multi-user support
+  calendarEventId  String?   // Linked Google Calendar task event
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([userId, dueDate])
+}
+
+model Opportunity {
+  id              String   @id @default(uuid())
+  userId          String?
+  name            String
+  programName     String?
+  type            String
+  amount          String?
+  equity          String?
+  description     String?
+  fullDescription String?
+  logo            String?
+  whatItOffers    String[]
+  criteria        String[]
+  stage           String[]
+  location        String?
+  deadline        String?
+  website         String?
+  tags            String[]
+  aiInsight       String?
+  source          String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

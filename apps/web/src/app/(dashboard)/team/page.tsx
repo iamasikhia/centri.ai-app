@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Users, Hash, Mail, Search, Activity } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { buildDashboardViewModel, DashboardViewModel } from '@/lib/dashboard-utils';
 import { TeamHealthView } from '@/components/team-health-view';
 
@@ -85,9 +86,24 @@ export default function TeamPage() {
 
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center h-96 space-y-4">
-                <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full"></div>
-                <div className="text-muted-foreground">Loading team data...</div>
+            <div className="space-y-6 max-w-6xl mx-auto pt-6">
+                <div className="flex justify-between items-center">
+                    <div className="space-y-2">
+                        <Skeleton className="h-9 w-32" />
+                        <Skeleton className="h-5 w-48" />
+                    </div>
+                    <Skeleton className="h-8 w-8 rounded-full" />
+                </div>
+                <div className="flex gap-4 border-b pb-2">
+                    <Skeleton className="h-6 w-24" />
+                    <Skeleton className="h-6 w-24" />
+                    <Skeleton className="h-6 w-24" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {Array.from({ length: 9 }).map((_, i) => (
+                        <Skeleton key={i} className="h-24 w-full rounded-lg" />
+                    ))}
+                </div>
             </div>
         );
     }
@@ -118,8 +134,7 @@ export default function TeamPage() {
                 </div>
                 <button
                     onClick={fetchData}
-                    className="p-2 text-muted-foreground hover:text-foreground rounded-full hover:bg-slate-100 transition-colors"
-                    title="Refresh Data"
+                    className="p-2 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted transition-colors"
                 >
                     <Users className="w-4 h-4" />
                 </button>
@@ -180,7 +195,7 @@ export default function TeamPage() {
                             placeholder="Search members..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                            className="w-full pl-10 pr-4 py-2 bg-card border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                         />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -223,7 +238,7 @@ export default function TeamPage() {
                             placeholder="Search channels..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                            className="w-full pl-10 pr-4 py-2 bg-card border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                         />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -245,7 +260,7 @@ export default function TeamPage() {
                                     </p>
                                 )}
                                 {channel.isPrivate && (
-                                    <span className="inline-block mt-2 px-2 py-1 text-xs bg-amber-100 text-amber-800 rounded">
+                                    <span className="inline-block mt-2 px-2 py-1 text-xs bg-warning/20 text-warning rounded">
                                         Private
                                     </span>
                                 )}

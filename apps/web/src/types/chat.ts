@@ -5,11 +5,13 @@ export type UIResponse = {
     intent: Intent;
     title?: string;
     subtitle?: string;
+    sessionTitle?: string;
     blocks: UIBlock[];
     debug?: {
         sourcesChecked: SourceCheck[];
         latencyMs?: number;
     };
+    artifact?: Artifact;
 };
 
 export type Intent =
@@ -21,6 +23,8 @@ export type Intent =
     | "get_task_health"
     | "is_next_meeting_physical"
     | "help_connect_integrations"
+    | "generate_prd"
+    | "generate_architecture"
     | "unknown";
 
 export type Source = "google_calendar" | "slack" | "google_chat" | "jira" | "clickup";
@@ -54,3 +58,25 @@ export type UIListItem = {
 export type UIAction =
     | { type: "link"; label: string; href: string }
     | { type: "button"; label: string; action: "connect_integration" | "sync_now" | "open_url"; params?: Record<string, string> };
+
+export type Artifact =
+    | { type: "prd"; content: PRDData }
+    | { type: "architecture"; content: ArchitectureData }
+    | { type: "document"; content: string };
+
+export interface PRDData {
+    title: string;
+    problem: string;
+    goals: string[];
+    personas: { role: string; description: string }[];
+    userStories: { id: string; story: string; priority: 'High' | 'Medium' | 'Low' }[];
+    functionalRequirements: string[];
+    nonFunctionalRequirements: string[];
+    risks: string[];
+}
+
+export interface ArchitectureData {
+    title: string;
+    mermaidCode: string;
+    description: string;
+}

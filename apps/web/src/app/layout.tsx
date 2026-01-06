@@ -25,7 +25,29 @@ export default function RootLayout({
     children: React.ReactNode
 }) {
     return (
-        <html lang="en">
+        <html lang="en" suppressHydrationWarning>
+            <head>
+                <script
+                    dangerouslySetInnerHTML={{
+                        __html: `
+              (function() {
+                try {
+                  var storageKey = 'centri-theme';
+                  var theme = localStorage.getItem(storageKey);
+                  var supportDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches === true;
+                  if (!theme || theme === 'system') {
+                    if (supportDarkMode) {
+                      document.documentElement.classList.add('dark');
+                    }
+                  } else if (theme === 'dark') {
+                    document.documentElement.classList.add('dark');
+                  }
+                } catch (e) {}
+              })();
+            `,
+                    }}
+                />
+            </head>
             <body className={figtree.className}>
                 <Providers>
                     <div className="flex h-screen bg-background">

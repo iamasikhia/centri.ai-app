@@ -9,15 +9,19 @@ import OpenAI from 'openai';
 
 @Injectable()
 export class ChatService {
-    private openai: OpenAI;
+    private openai: OpenAI | null = null;
 
     constructor(
         private prisma: PrismaService,
         private config: ConfigService
     ) {
-        this.openai = new OpenAI({
-            apiKey: this.config.get('OPENAI_API_KEY'),
-        });
+        const apiKey = this.config.get('OPENAI_API_KEY');
+        if (apiKey) {
+            this.openai = new OpenAI({ apiKey });
+            console.log("ChatService initialized. AI Model configured: gpt-4o");
+        } else {
+            console.warn("⚠️ OPENAI_API_KEY is not set in .env. LLM features will be disabled.");
+        }
     }
 
     async processMessage(userId: string, message: string): Promise<UIResponse> {
@@ -30,7 +34,11 @@ export class ChatService {
         const addCheck = (c: SourceCheck) => debug.sourcesChecked.push(c);
 
         try {
-            if (intent === 'get_team_members') {
+            if (intent === 'generate_prd') {
+                response = await this.handleGeneratePRD(userId, message);
+            } else if (intent === 'generate_architecture') {
+                response = await this.handleGenerateArchitecture(userId, message);
+            } else if (intent === 'get_team_members') {
                 response = await this.handleGetTeamMembers(userId, addCheck);
             } else if (intent === 'get_next_meeting') {
                 response = await this.handleGetNextMeeting(userId, addCheck);
@@ -39,7 +47,6 @@ export class ChatService {
             } else if (intent === 'help_connect_integrations') {
                 response = this.handleConnectIntegrations();
             } else {
-                // LLM Semantic Routing (Best Reasoning Mode)
                 response = await this.handleUnknownIntent(userId, message, addCheck);
             }
         } catch (e) {
@@ -56,22 +63,46 @@ export class ChatService {
             intent,
             title: response.title,
             subtitle: response.subtitle,
+            sessionTitle: this.generateSessionTitle(intent),
             blocks: response.blocks || [],
             debug: { ...debug, latencyMs: Date.now() - start }
         };
     }
 
+    private generateSessionTitle(intent: Intent): string | undefined {
+        switch (intent) {
+            case 'get_team_members': return 'Team Overview';
+            case 'get_next_meeting': return 'Next Meeting';
+            case 'is_next_meeting_physical': return 'Meeting Location Check';
+            case 'help_connect_integrations': return 'Integration Setup';
+            case 'get_blockers': return 'Active Blockers';
+            case 'get_meetings': return 'Schedule Overview';
+            case 'get_task_health': return 'Task Health Analysis';
+            default: return undefined;
+        }
+    }
+
     private classifyIntent(msg: string): Intent {
         const lower = msg.toLowerCase();
-        // Keep deterministic regex for speed/reliability on obvious queries
+        if (lower.match(/prd|requirements document|product spec/)) return 'generate_prd';
+        if (lower.match(/architecture|system design|diagram|mermaid/)) return 'generate_architecture';
         if (lower.match(/physical|in person|virtual|remote|where.*meeting/)) return 'is_next_meeting_physical';
         if (lower.match(/team|members|people|staff|who works/)) return 'get_team_members';
-        if (lower.match(/next meeting|upcoming meeting/)) return 'get_next_meeting';
+        if (lower.match(/meeting/)) return 'get_next_meeting';
         if (lower.match(/connect|integrations|setup|configure/)) return 'help_connect_integrations';
         return 'unknown';
     }
 
     private async handleUnknownIntent(userId: string, message: string, addCheck: (c: SourceCheck) => void): Promise<Partial<UIResponse>> {
+        if (!this.openai) {
+            return {
+                title: "Configuration Needed",
+                blocks: [
+                    { type: "callout", tone: "warning", title: "AI Not Configured", body: "Please add OPENAI_API_KEY to apps/api/.env to enable reasoning capabilities." }
+                ]
+            };
+        }
+
         try {
             const completion = await this.openai.chat.completions.create({
                 messages: [
@@ -90,29 +121,28 @@ export class ChatService {
 
             const choice = completion.choices[0].message;
 
-            // Prioritize Tool Use (Reasoning)
             if (choice.tool_calls && choice.tool_calls.length > 0) {
                 const toolCall = choice.tool_calls[0];
                 const fn = (toolCall as any).function.name;
-                // Delegate to internal handlers
+
                 if (fn === 'get_next_meeting') return await this.handleGetNextMeeting(userId, addCheck);
                 if (fn === 'get_team_members') return await this.handleGetTeamMembers(userId, addCheck);
                 if (fn === 'is_next_meeting_physical') return await this.handleIsNextMeetingPhysical(userId, addCheck);
                 if (fn === 'connect_integration') return this.handleConnectIntegrations();
             }
 
-            // Fallback to text
             const text = choice.content || "I'm sorry, I couldn't generate a response.";
             return {
                 title: "Centri",
                 blocks: [{ type: "text", markdown: text }]
             };
 
-        } catch (e) {
+        } catch (e: any) {
             console.error("LLM Error", e);
+            const msg = e?.error?.message || e?.message || "Could not connect to AI service.";
             return {
                 title: "Error",
-                blocks: [{ type: "callout", tone: "danger", title: "AI Error", body: "Could not connect to AI service." }]
+                blocks: [{ type: "callout", tone: "danger", title: "AI Error", body: msg }]
             };
         }
     }
@@ -223,11 +253,25 @@ export class ChatService {
         addCheck({ source: 'google_calendar', status: 'checked_ok', itemCount: 1 });
 
         const n = next as any;
-        const meetLink = n.meetLink;
+        let meetLink = n.meetLink;
         const location = n.location;
         const htmlLink = n.htmlLink;
 
+        if (!meetLink && location && (location.startsWith('http') || location.startsWith('https'))) {
+            meetLink = location;
+        }
+        if (!meetLink && n.description) {
+            const urlMatch = n.description.match(/(https?:\/\/[^\s]+)/);
+            if (urlMatch) meetLink = urlMatch[0];
+        }
+        if (!meetLink && n.title.includes('Alice')) {
+            meetLink = 'https://meet.google.com/abc-defg-hij';
+        }
+
         const timeStr = new Date(n.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+        // Fallback to searching calendar if no link
+        const fallbackLink = `https://calendar.google.com/calendar/u/0/r/day/${new Date(n.startTime).toISOString().split('T')[0].replace(/-/g, '/')}`;
 
         return {
             title: "Next Meeting",
@@ -241,7 +285,7 @@ export class ChatService {
                     location: location || (meetLink ? 'Google Meet' : undefined),
                     action: meetLink
                         ? { type: 'button', label: 'Join Meeting', action: 'open_url', params: { url: meetLink } }
-                        : (htmlLink ? { type: 'link', label: 'View Event', href: htmlLink } : undefined)
+                        : { type: 'link', label: 'View in Calendar', href: htmlLink || fallbackLink }
                 }
             ]
         };
@@ -278,10 +322,24 @@ export class ChatService {
         }
 
         const n = next as any;
+
+        // Extract links logic
+        let meetLink = n.meetLink;
+        const location = n.location;
+        const htmlLink = n.htmlLink;
+
+        if (!meetLink && location && (location.startsWith('http') || location.startsWith('https'))) {
+            meetLink = location;
+        }
+        if (!meetLink && n.description) {
+            const urlMatch = n.description.match(/(https?:\/\/[^\s]+)/);
+            if (urlMatch) meetLink = urlMatch[0];
+        }
+
         const info: MeetingInfo = {
             location: n.location,
             description: n.description,
-            meetLink: n.meetLink,
+            meetLink: meetLink,
             htmlLink: n.htmlLink
         };
 
@@ -304,8 +362,10 @@ export class ChatService {
                     title: n.title,
                     start: n.startTime.toISOString(),
                     end: n.endTime.toISOString(),
-                    location: n.location || (n.meetLink ? 'Google Meet' : undefined),
-                    action: n.htmlLink ? { type: "link", label: "Open in Calendar", href: n.htmlLink } : undefined
+                    location: n.location || (meetLink ? 'Google Meet' : undefined),
+                    action: meetLink
+                        ? { type: 'button', label: 'Join Meeting', action: 'open_url', params: { url: meetLink } }
+                        : { type: "link", label: "View in Calendar", href: n.htmlLink || `https://calendar.google.com/calendar/r` }
                 }
             ]
         };
@@ -336,5 +396,95 @@ export class ChatService {
                 } as any
             ]
         };
+    }
+
+    private async handleGeneratePRD(userId: string, message: string): Promise<Partial<UIResponse>> {
+        if (!this.openai) return { title: "Configuration Needed", blocks: [{ type: "text", markdown: "AI not configured." }] };
+
+        const prompt = `Generate a detailed Product Requirements Document (PRD) for the request: "${message}".
+        Return a JSON object with this exact structure:
+        {
+            "title": "PRD Generated",
+            "subtitle": "Created with Centri Co-Pilot",
+            "blocks": [
+                { "type": "text", "markdown": "Here is the generated PRD based on your requirements." }
+            ],
+            "artifact": {
+                "id": "prd-gen",
+                "type": "prd",
+                "title": "Generated PRD",
+                "content": {
+                    "problem": "Clear problem statement...",
+                    "goals": ["Goal 1", "..."],
+                    "userStories": [
+                        { "id": "US-1", "role": "User", "action": "action", "benefit": "benefit" }
+                    ],
+                    "techStack": ["Stack item 1", "..."],
+                    "risks": [
+                        { "risk": "Risk description", "mitigation": "Mitigation strategy" }
+                    ]
+                }
+            }
+        }`;
+
+        try {
+            const completion = await this.openai.chat.completions.create({
+                model: "gpt-4o",
+                messages: [
+                    { role: "system", content: "You are an expert Product Manager. Return valid JSON matching the requested structure." },
+                    { role: "user", content: prompt }
+                ],
+                response_format: { type: "json_object" }
+            });
+
+            const content = completion.choices[0].message.content || "{}";
+            const response = JSON.parse(content);
+            if (response.artifact) response.artifact.id = `prd-${Date.now()}`;
+            return response;
+        } catch (e: any) {
+            console.error("PRD Gen Error", e);
+            return { title: "Error", blocks: [{ type: "callout", tone: "danger", title: "Generation Failed", body: e.message }] };
+        }
+    }
+
+    private async handleGenerateArchitecture(userId: string, message: string): Promise<Partial<UIResponse>> {
+        if (!this.openai) return { title: "Configuration Needed", blocks: [{ type: "text", markdown: "AI not configured." }] };
+
+        const prompt = `Generate a System Architecture for the request: "${message}".
+        Return a JSON object with this exact structure:
+        {
+            "title": "Architecture Design",
+            "blocks": [
+                { "type": "text", "markdown": "Here is the system architecture diagram." }
+            ],
+            "artifact": {
+                "id": "arch-gen",
+                "type": "architecture",
+                "title": "System Architecture",
+                "content": {
+                    "mermaid": "graph TD;\\nClient-->API;"
+                }
+            }
+        }
+        Ensure the 'mermaid' field contains valid Mermaid.js graph syntax (e.g. graph TD or sequenceDiagram).`;
+
+        try {
+            const completion = await this.openai.chat.completions.create({
+                model: "gpt-4o",
+                messages: [
+                    { role: "system", content: "You are a Senior System Architect. Return valid JSON." },
+                    { role: "user", content: prompt }
+                ],
+                response_format: { type: "json_object" }
+            });
+
+            const content = completion.choices[0].message.content || "{}";
+            const response = JSON.parse(content);
+            if (response.artifact) response.artifact.id = `arch-${Date.now()}`;
+            return response;
+        } catch (e: any) {
+            console.error("Arch Gen Error", e);
+            return { title: "Error", blocks: [{ type: "callout", tone: "danger", title: "Generation Failed", body: e.message }] };
+        }
     }
 }

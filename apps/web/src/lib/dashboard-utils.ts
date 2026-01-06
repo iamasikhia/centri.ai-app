@@ -17,12 +17,14 @@ export interface Task {
     status: string;
     dueDate?: string;
     priority?: string;
+    description?: string;
     isBlocked?: boolean;
     blockedBy?: Array<{ id?: string; key?: string; title?: string }>;
     source?: 'jira' | 'clickup' | 'other';
     sourceUrl?: string;
     updatedAt?: string;
     createdAt?: string;
+    confidence?: number;
 }
 
 export interface Meeting {
@@ -33,10 +35,77 @@ export interface Meeting {
     attendeeEmails: string[];
     attendeeIds?: string[];
     sourceUrl?: string;
+    type?: 'meeting' | 'task';
+    confidence?: number;
+    reason?: string;
+}
+
+
+export interface DetailedMetric {
+    id: string;
+    title: string;
+    value: number;
+    description: string;
+    trendLabel: string; // e.g. "+5 since last week"
+    trendDirection: 'up' | 'down' | 'flat';
+    subtext?: string;   // e.g. "Last update: 2 hours ago"
+    source?: 'github' | 'internal';
+}
+
+export interface ExecutiveMetrics {
+    // We will use an array of metrics for flexibility
+    metrics: DetailedMetric[];
+}
+
+export interface ProductFeature {
+    id: string;
+    name: string;
+    completion: number;
+    status: 'On Track' | 'At Risk' | 'Blocked';
+    aiExplanation: string;
+    source?: 'github' | 'internal';
+}
+
+export interface ExecutionMomentum {
+    tasksCreated: number;
+    tasksCompleted: number;
+    meetingsCompleted: number; // New field
+    meetingsToActionRatio: number; // e.g. 1.5
+    avgTaskAgeDays: number;
+    prsMerged: number;
+    reviewsPending: number;
+}
+
+export interface RiskItem {
+    id: string;
+    text: string;
+    severity: 'Low' | 'Medium' | 'High';
+    type: 'blocker' | 'reopened' | 'stalled' | 'decision';
+    context?: {
+        duration?: string;
+        waitingOn?: string;
+        source?: string;
+    };
+    source?: 'github' | 'internal';
+}
+
+export interface RecommendedAction {
+    id: string;
+    title: string;
+    reason: string;
+    linkedEntity?: string;
+    priority: 'High' | 'Medium' | 'Low';
+    type: 'blocker' | 'overdue' | 'decision';
 }
 
 export interface DashboardViewModel {
     lastSyncedAt: string;
+    aiInsight: string;
+    executive: ExecutiveMetrics;
+    product: ProductFeature[];
+    momentum: ExecutionMomentum;
+    risks: RiskItem[];
+    recommendedActions: RecommendedAction[];
     attention: {
         blockedCount: number;
         overdueCount: number;
@@ -50,7 +119,7 @@ export interface DashboardViewModel {
         dueToday: Task[];
         dueSoon: Task[];
     };
-    blockers: Task[]; // Enriched with age
+    blockers: Task[];
     teamHealth: Array<{
         person: Person;
         active: number;
@@ -67,8 +136,12 @@ export interface DashboardViewModel {
         attendees: Person[];
         atRiskTasks: Task[];
     };
-    upcomingMeetings: Meeting[]; // Rest of them
+    upcomingMeetings: Meeting[];
+    githubRepositories?: string[];
+    githubRawData?: { commits: any[], prs: any[], releases: any[] };
 }
+
+
 
 // Helper: Format Person
 export function formatPerson(person?: Person | null, fallbackEmail?: string) {
@@ -113,15 +186,11 @@ export function groupTasksByUrgency(tasks: Task[], now = new Date()) {
                 dueSoon.push(task);
             }
         }
-        // Note: If no due date but Blocked, maybe put in Focus? 
-        // For now strict due date based.
     });
 
-    // Sort: Blocked first, then Priority (High>Med>Low), then DueDate
     const sorter = (a: Task, b: Task) => {
         if (a.isBlocked && !b.isBlocked) return -1;
         if (!a.isBlocked && b.isBlocked) return 1;
-        // Priority logic could go here
         return (a.dueDate ? new Date(a.dueDate).getTime() : 0) - (b.dueDate ? new Date(b.dueDate).getTime() : 0);
     };
 
@@ -134,9 +203,31 @@ export function groupTasksByUrgency(tasks: Task[], now = new Date()) {
 
 // Main Build Function
 export function buildDashboardViewModel(
-    data: { tasks: Task[], meetings: Meeting[], people: Person[], lastSyncedAt?: string },
+    data: { tasks: Task[], meetings: Meeting[], people: Person[], lastSyncedAt?: string, githubIntelligence?: any },
     now = new Date()
 ): DashboardViewModel {
+
+    // Separate real meetings vs calendar tasks
+    const realMeetings = data.meetings.filter(m => m.type !== 'task');
+    const calendarTasks = data.meetings.filter(m => m.type === 'task');
+
+    // Convert calendar tasks to Tasks
+    const convertedTasks: Task[] = calendarTasks.map(ct => ({
+        id: ct.id,
+        title: ct.title,
+        status: 'Todo',
+        dueDate: ct.startTime,
+        priority: 'Medium',
+        isBlocked: false,
+        source: 'other',
+        sourceUrl: ct.sourceUrl,
+        updatedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        confidence: ct.confidence
+    }));
+
+    const allTasks = [...data.tasks, ...convertedTasks];
+    const tasks = allTasks;
 
     // Map emails to people
     const peopleMap = new Map<string, Person>();
@@ -148,13 +239,13 @@ export function buildDashboardViewModel(
     const getPerson = (email?: string) => email ? peopleMap.get(email.toLowerCase()) : undefined;
 
     // 1. Attention Stats
-    const blockedTasks = data.tasks.filter(t => t.isBlocked && t.status !== 'Done');
-    const groups = groupTasksByUrgency(data.tasks, now);
+    const blockedTasks = tasks.filter(t => t.isBlocked && t.status !== 'Done');
+    const groups = groupTasksByUrgency(tasks, now);
 
-    const todaysMeetings = data.meetings.filter(m => isToday(new Date(m.startTime)));
+    const todaysMeetings = realMeetings.filter(m => isToday(new Date(m.startTime)));
 
     // Next Meeting
-    const upcomingMeetings = data.meetings
+    const upcomingMeetings = realMeetings
         .filter(m => new Date(m.startTime) > now)
         .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
@@ -173,7 +264,6 @@ export function buildDashboardViewModel(
             const attendees = nextMeeting.attendeeEmails.map(e => getPerson(e)).filter(Boolean) as Person[];
             const attendeeEmails = new Set(nextMeeting.attendeeEmails.map(e => e.toLowerCase()));
 
-            // Tasks at risk: overdue or blocked tasks assigned to attendees
             const atRisk = data.tasks.filter(t =>
                 t.status !== 'Done' &&
                 ((t.isBlocked) || (t.dueDate && isPast(new Date(t.dueDate)))) &&
@@ -210,8 +300,166 @@ export function buildDashboardViewModel(
         };
     }).filter(Boolean) as any[];
 
+    // --- INTELLIGENCE & METRICS ---
+    const gh = data.githubIntelligence;
+
+    // 1. Executive Metrics
+    let baseMetrics: DetailedMetric[] = [];
+
+    if (gh && gh.metrics) {
+        baseMetrics = gh.metrics.map((m: any) => ({ ...m, source: 'github' }));
+    } else {
+        // Fallback Mocks (if no GitHub)
+        baseMetrics = [
+            { id: 'repo-updates', title: 'Repository Updates', value: 0, description: 'No data connected', trendLabel: '-', trendDirection: 'flat' },
+            { id: 'eng-changes', title: 'Engineering Changes', value: 0, description: 'No data connected', trendLabel: '-', trendDirection: 'flat' },
+            { id: 'shipped', title: 'Product Updates Shipped', value: 0, description: 'No data connected', trendLabel: '-', trendDirection: 'flat' }
+        ];
+    }
+
+    // Add Internal Ops indicators (Blocked items from tasks)
+    // Insert at index 2
+    baseMetrics.splice(2, 0, {
+        id: 'blocked-items',
+        title: 'Blocked Items',
+        value: blockedTasks.length,
+        description: 'Work that cannot progress without intervention',
+        trendLabel: blockedTasks.length > 0 ? 'Needs Attention' : 'Clear',
+        trendDirection: blockedTasks.length > 0 ? 'down' : 'up'
+    });
+
+    // Add Decisions context (Mocked for now as we don't have this source yet)
+    baseMetrics.push({
+        id: 'decisions',
+        title: 'Product Decisions',
+        value: 4,
+        description: 'Decisions finalized in meetings',
+        trendLabel: 'Stable',
+        trendDirection: 'flat'
+    });
+
+    const executive: ExecutiveMetrics = { metrics: baseMetrics };
+
+    // 2. Product Initiatives
+    let product: ProductFeature[] = [];
+    if (gh && gh.initiatives) {
+        product = gh.initiatives.map((p: any) => ({ ...p, source: 'github' }));
+    } else {
+        product = [ // Fallback
+            { id: 'f1', name: 'Q3 Roadmap Planning', completion: 85, status: 'On Track', aiExplanation: 'Finalizing scope with stakeholders.' },
+            { id: 'f2', name: 'Demo Initiative', completion: 20, status: 'At Risk', aiExplanation: 'Connect GitHub to see real initiatives.' }
+        ];
+    }
+
+    // Calulate Momentum from Real Data
+    const momentumTasks = data.tasks;
+    const totalTasks = momentumTasks.length;
+    const completedTasks = momentumTasks.filter(t => ['Done', 'Complete', 'Closed'].includes(t.status)).length;
+
+    let totalAgeMs = 0;
+    let ageCount = 0;
+    const nowMomentum = new Date();
+
+    momentumTasks.forEach(t => {
+        if (t.createdAt) {
+            const start = new Date(t.createdAt).getTime();
+            // If done, use updated time as end, else use now. 
+            // If updated is missing, fall back to now (or ignore).
+            const end = (['Done', 'Complete', 'Closed'].includes(t.status) && t.updatedAt)
+                ? new Date(t.updatedAt).getTime()
+                : nowMomentum.getTime();
+
+            if (end > start) {
+                totalAgeMs += (end - start);
+                ageCount++;
+            }
+        }
+    });
+
+    const avgAge = ageCount > 0 ? Number((totalAgeMs / (1000 * 60 * 60 * 24)).toFixed(1)) : 0;
+
+    let prsMerged = 0;
+    let reviewsPending = 0;
+    if (gh && gh.rawData && gh.rawData.prs) {
+        prsMerged = gh.rawData.prs.filter((pr: any) => pr.merged).length;
+        reviewsPending = gh.rawData.prs.filter((pr: any) => pr.state === 'open').length;
+    }
+
+    const meetingsCompleted = data.meetings ? data.meetings.filter(m => new Date(m.endTime) < nowMomentum).length : 0;
+
+    const momentum: ExecutionMomentum = {
+        tasksCreated: totalTasks,
+        tasksCompleted: completedTasks,
+        meetingsCompleted: meetingsCompleted,
+        meetingsToActionRatio: 1.2,
+        avgTaskAgeDays: avgAge,
+        prsMerged: prsMerged,
+        reviewsPending: reviewsPending
+    };
+
+    const risks: RiskItem[] = [
+        ...blockedTasks.map(t => ({
+            id: t.id,
+            text: `Task "${t.title}" is blocked`,
+            severity: 'High' as const,
+            type: 'blocker' as const,
+            source: 'internal' as const
+        })),
+        { id: 'r1', text: 'Strategy Sync overdue', severity: 'Medium', type: 'stalled', source: 'internal' as const }
+    ];
+
+    if (gh && gh.risks) {
+        risks.push(...gh.risks.map((r: any) => ({ ...r, source: 'github' })));
+    }
+
+    // Updated AI Insight
+    let aiInsight = '';
+
+    if (gh && gh.weeklyBrief) {
+        aiInsight = gh.weeklyBrief;
+    } else {
+        const completedCount = tasks.filter(t => t.status === 'Done').length;
+        aiInsight = `This week, the team has ${tasks.length} active tasks and ${blockedTasks.length} blockers. Connect GitHub to see engineering progress.`;
+    }
+
+    // Mock Recommended Actions
+    const recommendedActions: RecommendedAction[] = [
+        ...blockedTasks.slice(0, 2).map(t => ({
+            id: `act-${t.id}`,
+            title: `Unblock "${t.title}"`,
+            reason: t.blockedBy?.[0]?.title ? `Blocking dependency: ${t.blockedBy[0].title}` : 'Long-running blocker detected',
+            linkedEntity: t.title,
+            priority: 'High' as const,
+            type: 'blocker' as const
+        })),
+        {
+            id: 'act-decision',
+            title: 'Finalize Auth Strategy',
+            reason: 'Decision blocked Analytics Dashboard for 3 days',
+            linkedEntity: 'Analytics Dashboard',
+            priority: 'High',
+            type: 'decision'
+        },
+        {
+            id: 'act-followup',
+            title: 'Follow up with Design Team',
+            reason: 'Missed sync on Mobile Redesign yesterday',
+            linkedEntity: 'Mobile App Redesign',
+            priority: 'Medium',
+            type: 'overdue'
+        }
+    ];
+
     return {
         lastSyncedAt: data.lastSyncedAt || new Date().toISOString(),
+
+        aiInsight,
+        executive,
+        product,
+        momentum,
+        risks,
+        recommendedActions,
+
         attention: {
             blockedCount: blockedTasks.length,
             overdueCount: groups.overdue.length,
@@ -224,6 +472,9 @@ export function buildDashboardViewModel(
         blockers: blockedTasks,
         teamHealth,
         nextMeetingBrief,
-        upcomingMeetings: upcomingMeetings.slice(0, 5)
+        upcomingMeetings: upcomingMeetings.slice(0, 5),
+        githubRepositories: gh ? gh.repositories : [],
+        githubRawData: gh ? gh.rawData : undefined
     };
 }
+

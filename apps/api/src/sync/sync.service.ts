@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { IntegrationsService } from '../integrations/integrations.service';
 import { EncryptionService } from '../encryption/encryption.service';
+import { CalendarClassificationService } from '../integrations/calendar-classification.service';
 
 @Injectable()
 export class SyncService {
@@ -9,6 +10,7 @@ export class SyncService {
         private prisma: PrismaService,
         private integrationsService: IntegrationsService,
         private encryption: EncryptionService,
+        private classifier: CalendarClassificationService,
     ) { }
 
     async syncAll(userId: string) {
@@ -62,17 +64,56 @@ export class SyncService {
         // 1. Meetings
         if (data.meetings) {
             for (const m of data.meetings) {
-                // Upsert meetings to avoid duplicates
-                // Ideally we check if it exists or clear old ones. For MVP upsert based on composite key or ID?
-                // My schema uses random UUID for ID, so I need to find by `calendarEventId`.
+                // Classify
+                const classification = await this.classifier.classify({
+                    title: m.title,
+                    description: m.description,
+                    attendeesCount: m.rawAttendeesCount,
+                    hasConference: m.hasConference,
+                    isSelfOrganized: m.isSelfOrganized,
+                    durationMinutes: m.durationMinutes
+                });
+
+                // Prepare data (exclude temp fields)
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                const { rawAttendeesCount, hasConference, isSelfOrganized, durationMinutes, ...dbData } = m;
+                const meetingData = {
+                    ...dbData,
+                    calendarEventType: classification.type,
+                    calendarEventConfidence: classification.confidence,
+                    calendarEventReasoning: classification.reason
+                };
+
                 const existing = await this.prisma.meeting.findFirst({
                     where: { userId, calendarEventId: m.calendarEventId }
                 });
 
                 if (existing) {
-                    await this.prisma.meeting.update({ where: { id: existing.id }, data: m });
+                    await this.prisma.meeting.update({ where: { id: existing.id }, data: meetingData });
                 } else {
-                    await this.prisma.meeting.create({ data: { ...m, userId } });
+                    const newMeeting = await this.prisma.meeting.create({ data: { ...meetingData, userId } });
+
+                    // Emit UpdateItem
+                    try {
+                        await this.prisma.updateItem.create({
+                            data: {
+                                userId,
+                                source: providerName === 'google' ? 'google_calendar' : providerName,
+                                type: `calendar_${classification.type}`,
+                                severity: classification.type === 'meeting' ? 'important' : 'info',
+                                title: classification.type === 'meeting' ? `New Meeting: ${newMeeting.title}` : `Time Block: ${newMeeting.title}`,
+                                body: `Scheduled for ${newMeeting.startTime.toLocaleString()}`,
+                                occurredAt: newMeeting.startTime,
+                                externalId: m.calendarEventId,
+                                url: newMeeting.htmlLink,
+                                isRead: false
+                            }
+                        });
+                    } catch (e) {
+                        if (!e.message?.includes('Unique constraint')) {
+                            console.error('Failed to create UpdateItem', e);
+                        }
+                    }
                 }
             }
         }
@@ -103,6 +144,37 @@ export class SyncService {
                     await this.prisma.teamMember.update({ where: { id: existing.id }, data: tm });
                 } else {
                     await this.prisma.teamMember.create({ data: { ...tm, userId } });
+                }
+            }
+        }
+
+        // 4. Emails
+        if (data.emails) {
+            for (const email of data.emails) {
+                try {
+                    // Check if exists to avoid error spam
+                    const exists = await this.prisma.updateItem.findFirst({
+                        where: { userId, source: 'gmail', externalId: email.externalId }
+                    });
+
+                    if (!exists) {
+                        await this.prisma.updateItem.create({
+                            data: {
+                                userId,
+                                source: 'gmail',
+                                type: 'email',
+                                severity: 'info',
+                                title: email.title || 'No Subject',
+                                body: email.snippet || '',
+                                occurredAt: email.receivedAt,
+                                externalId: email.externalId,
+                                url: email.link,
+                                isRead: false
+                            }
+                        });
+                    }
+                } catch (e) {
+                    console.error('Failed to process email', e);
                 }
             }
         }

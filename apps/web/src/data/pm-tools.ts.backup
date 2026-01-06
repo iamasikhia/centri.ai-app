@@ -1,0 +1,605 @@
+export type CompanyStage = 'Startup' | 'Scaleup' | 'Enterprise' | 'All';
+
+export interface Tool {
+    id: string;
+    name: string;
+    logo?: string;
+    primaryUse: string;
+    commonScenario: string;
+    bestForStage: CompanyStage[];
+    website?: string;
+}
+
+export interface Category {
+    id: string;
+    name: string;
+    description: string;
+    tools: Tool[];
+}
+
+export const pmToolsData: Category[] = [
+    {
+        id: 'discovery',
+        name: 'Product Discovery & Research',
+        description: 'Tools for understanding user needs, validating ideas, and conducting market research before building.',
+        tools: [
+            {
+                id: 'dovetail',
+                name: 'Dovetail',
+                logo: 'https://logo.clearbit.com/dovetail.com',
+                primaryUse: 'User research repository and analysis',
+                commonScenario: 'Organizing interview transcripts, tagging insights, and synthesizing patterns across user research',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://dovetail.com'
+            },
+            {
+                id: 'maze',
+                name: 'Maze',
+                logo: 'https://logo.clearbit.com/maze.co',
+                primaryUse: 'Rapid user testing and prototype validation',
+                commonScenario: 'Testing design prototypes with users before development, gathering quantitative usability metrics',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://maze.co'
+            },
+            {
+                id: 'usertesting',
+                name: 'UserTesting',
+                logo: 'https://logo.clearbit.com/usertesting.com',
+                primaryUse: 'On-demand user feedback and video sessions',
+                commonScenario: 'Getting quick feedback on designs or live products from target users',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://usertesting.com'
+            },
+            {
+                id: 'amplitude-discover',
+                name: 'Amplitude (Discover)',
+                logo: 'https://logo.clearbit.com/amplitude.com',
+                primaryUse: 'Behavioral analytics for discovery',
+                commonScenario: 'Identifying usage patterns and drop-off points to inform what to build next',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://amplitude.com'
+            },
+            {
+                id: 'miro',
+                name: 'Miro',
+                logo: 'https://logo.clearbit.com/miro.com',
+                primaryUse: 'Collaborative whiteboarding and workshops',
+                commonScenario: 'Running discovery workshops, journey mapping, and affinity diagramming with stakeholders',
+                bestForStage: ['All'],
+                website: 'https://miro.com'
+            },
+            {
+                id: 'typeform',
+                name: 'Typeform',
+                logo: 'https://logo.clearbit.com/typeform.com',
+                primaryUse: 'User surveys and feedback collection',
+                commonScenario: 'Creating engaging surveys to validate assumptions or gather feature requests',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://typeform.com'
+            }
+        ]
+    },
+    {
+        id: 'roadmapping',
+        name: 'Roadmapping & Strategy',
+        description: 'Tools for planning product direction, prioritizing initiatives, and communicating strategy.',
+        tools: [
+            {
+                id: 'productboard',
+                name: 'ProductBoard',
+                logo: 'https://logo.clearbit.com/productboard.com',
+                primaryUse: 'Product roadmapping and prioritization',
+                commonScenario: 'Collecting feature requests, scoring them against strategy, and building visual roadmaps',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://productboard.com'
+            },
+            {
+                id: 'aha',
+                name: 'Aha!',
+                logo: 'https://logo.clearbit.com/aha.io',
+                primaryUse: 'Strategic roadmapping and release planning',
+                commonScenario: 'Creating multi-quarter roadmaps aligned to business goals and OKRs',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://aha.io'
+            },
+            {
+                id: 'airfocus',
+                name: 'Airfocus',
+                logo: 'https://logo.clearbit.com/airfocus.com',
+                primaryUse: 'Modular roadmapping and prioritization',
+                commonScenario: 'Building flexible roadmaps with custom prioritization frameworks (RICE, Value vs Effort)',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://airfocus.com'
+            },
+            {
+                id: 'notion',
+                name: 'Notion',
+                logo: 'https://logo.clearbit.com/notion.so',
+                primaryUse: 'Flexible docs and lightweight roadmaps',
+                commonScenario: 'Creating living strategy docs, simple roadmaps, and team wikis',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://notion.so'
+            },
+            {
+                id: 'coda',
+                name: 'Coda',
+                logo: 'https://logo.clearbit.com/coda.io',
+                primaryUse: 'Interactive docs with database capabilities',
+                commonScenario: 'Building custom roadmap views with formulas, automations, and linked data',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://coda.io'
+            },
+            {
+                id: 'craft',
+                name: 'Craft.io',
+                logo: 'https://logo.clearbit.com/craft.io',
+                primaryUse: 'Product management platform',
+                commonScenario: 'End-to-end product planning from strategy to delivery tracking',
+                bestForStage: ['Enterprise'],
+                website: 'https://craft.io'
+            }
+        ]
+    },
+    {
+        id: 'documentation',
+        name: 'PRD & Documentation',
+        description: 'Tools for writing product requirements, specifications, and maintaining product knowledge.',
+        tools: [
+            {
+                id: 'confluence',
+                name: 'Confluence',
+                logo: 'https://logo.clearbit.com/atlassian.com',
+                primaryUse: 'Team wiki and documentation hub',
+                commonScenario: 'Writing PRDs, maintaining product specs, and creating a single source of truth',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://atlassian.com/confluence'
+            },
+            {
+                id: 'notion-docs',
+                name: 'Notion',
+                logo: 'https://logo.clearbit.com/notion.so',
+                primaryUse: 'Collaborative documentation',
+                commonScenario: 'Writing lightweight PRDs, creating product wikis, and organizing knowledge',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://notion.so'
+            },
+            {
+                id: 'google-docs',
+                name: 'Google Docs',
+                logo: 'https://logo.clearbit.com/google.com',
+                primaryUse: 'Real-time collaborative writing',
+                commonScenario: 'Drafting PRDs with real-time stakeholder input and comments',
+                bestForStage: ['All'],
+                website: 'https://docs.google.com'
+            },
+            {
+                id: 'slite',
+                name: 'Slite',
+                logo: 'https://logo.clearbit.com/slite.com',
+                primaryUse: 'Team knowledge base',
+                commonScenario: 'Creating structured product documentation with easy navigation',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://slite.com'
+            },
+            {
+                id: 'nuclino',
+                name: 'Nuclino',
+                logo: 'https://logo.clearbit.com/nuclino.com',
+                primaryUse: 'Lightweight team wiki',
+                commonScenario: 'Building interconnected product docs with visual knowledge graphs',
+                bestForStage: ['Startup'],
+                website: 'https://nuclino.com'
+            },
+            {
+                id: 'gitbook',
+                name: 'GitBook',
+                logo: 'https://logo.clearbit.com/gitbook.com',
+                primaryUse: 'Technical documentation',
+                commonScenario: 'Creating public-facing product docs and internal technical specs',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://gitbook.com'
+            }
+        ]
+    },
+    {
+        id: 'design',
+        name: 'Design Collaboration',
+        description: 'Tools for working with designers, reviewing mockups, and managing design systems.',
+        tools: [
+            {
+                id: 'figma',
+                name: 'Figma',
+                primaryUse: 'Design collaboration and prototyping',
+                commonScenario: 'Reviewing designs, leaving feedback, and understanding user flows before development',
+                bestForStage: ['All'],
+                website: 'https://figma.com'
+            },
+            {
+                id: 'figjam',
+                name: 'FigJam',
+                primaryUse: 'Collaborative whiteboarding',
+                commonScenario: 'Brainstorming features, user flows, and workshop facilitation with design teams',
+                bestForStage: ['All'],
+                website: 'https://figma.com/figjam'
+            },
+            {
+                id: 'zeplin',
+                name: 'Zeplin',
+                primaryUse: 'Design handoff and specs',
+                commonScenario: 'Bridging design and development with precise specs and assets',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://zeplin.io'
+            },
+            {
+                id: 'abstract',
+                name: 'Abstract',
+                primaryUse: 'Design version control',
+                commonScenario: 'Managing design file versions and reviewing design iterations',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://abstract.com'
+            },
+            {
+                id: 'loom',
+                name: 'Loom',
+                primaryUse: 'Async video feedback',
+                commonScenario: 'Recording design walkthroughs and providing context-rich feedback',
+                bestForStage: ['All'],
+                website: 'https://loom.com'
+            }
+        ]
+    },
+    {
+        id: 'delivery',
+        name: 'Delivery & Sprint Management',
+        description: 'Tools for managing development sprints, tracking progress, and coordinating with engineering.',
+        tools: [
+            {
+                id: 'jira',
+                name: 'Jira',
+                primaryUse: 'Agile project management',
+                commonScenario: 'Managing sprints, tracking tickets, and coordinating with engineering teams',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://atlassian.com/jira'
+            },
+            {
+                id: 'linear',
+                name: 'Linear',
+                primaryUse: 'Modern issue tracking',
+                commonScenario: 'Fast, keyboard-driven sprint planning and issue management',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://linear.app'
+            },
+            {
+                id: 'asana',
+                name: 'Asana',
+                primaryUse: 'Work management and task tracking',
+                commonScenario: 'Coordinating cross-functional work and tracking deliverables',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://asana.com'
+            },
+            {
+                id: 'clickup',
+                name: 'ClickUp',
+                primaryUse: 'All-in-one project management',
+                commonScenario: 'Managing everything from roadmaps to sprints in one platform',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://clickup.com'
+            },
+            {
+                id: 'shortcut',
+                name: 'Shortcut',
+                primaryUse: 'Software project management',
+                commonScenario: 'Planning iterations and tracking engineering work with minimal overhead',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://shortcut.com'
+            },
+            {
+                id: 'github-projects',
+                name: 'GitHub Projects',
+                primaryUse: 'Code-integrated project tracking',
+                commonScenario: 'Managing work directly alongside code repositories',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://github.com/features/issues'
+            }
+        ]
+    },
+    {
+        id: 'communication',
+        name: 'Stakeholder Communication',
+        description: 'Tools for keeping stakeholders informed, running meetings, and managing alignment.',
+        tools: [
+            {
+                id: 'slack',
+                name: 'Slack',
+                primaryUse: 'Team messaging and updates',
+                commonScenario: 'Sharing quick updates, coordinating with teams, and maintaining product channels',
+                bestForStage: ['All'],
+                website: 'https://slack.com'
+            },
+            {
+                id: 'loom-comm',
+                name: 'Loom',
+                primaryUse: 'Async video updates',
+                commonScenario: 'Recording product demos, sprint reviews, and stakeholder updates',
+                bestForStage: ['All'],
+                website: 'https://loom.com'
+            },
+            {
+                id: 'zoom',
+                name: 'Zoom',
+                primaryUse: 'Video meetings',
+                commonScenario: 'Running sprint planning, stakeholder reviews, and user interviews',
+                bestForStage: ['All'],
+                website: 'https://zoom.us'
+            },
+            {
+                id: 'mmhmm',
+                name: 'mmhmm',
+                primaryUse: 'Enhanced video presentations',
+                commonScenario: 'Creating polished product demos and stakeholder presentations',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://mmhmm.app'
+            },
+            {
+                id: 'gamma',
+                name: 'Gamma',
+                primaryUse: 'AI-powered presentations',
+                commonScenario: 'Quickly creating product update decks and strategy presentations',
+                bestForStage: ['All'],
+                website: 'https://gamma.app'
+            },
+            {
+                id: 'pitch',
+                name: 'Pitch',
+                primaryUse: 'Collaborative presentation software',
+                commonScenario: 'Building beautiful stakeholder decks with team collaboration',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://pitch.com'
+            }
+        ]
+    },
+    {
+        id: 'analytics',
+        name: 'Analytics & Experimentation',
+        description: 'Tools for measuring product performance, running experiments, and making data-driven decisions.',
+        tools: [
+            {
+                id: 'amplitude',
+                name: 'Amplitude',
+                primaryUse: 'Product analytics',
+                commonScenario: 'Tracking user behavior, building funnels, and measuring feature adoption',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://amplitude.com'
+            },
+            {
+                id: 'mixpanel',
+                name: 'Mixpanel',
+                primaryUse: 'Event-based analytics',
+                commonScenario: 'Analyzing user actions, retention cohorts, and conversion metrics',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://mixpanel.com'
+            },
+            {
+                id: 'posthog',
+                name: 'PostHog',
+                primaryUse: 'Open-source product analytics',
+                commonScenario: 'Self-hosted analytics with session replay and feature flags',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://posthog.com'
+            },
+            {
+                id: 'heap',
+                name: 'Heap',
+                primaryUse: 'Auto-capture analytics',
+                commonScenario: 'Retroactive analysis without manual event tracking',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://heap.io'
+            },
+            {
+                id: 'optimizely',
+                name: 'Optimizely',
+                primaryUse: 'A/B testing and experimentation',
+                commonScenario: 'Running controlled experiments to validate product changes',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://optimizely.com'
+            },
+            {
+                id: 'launchdarkly',
+                name: 'LaunchDarkly',
+                primaryUse: 'Feature flags and rollouts',
+                commonScenario: 'Gradually releasing features and running targeted experiments',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://launchdarkly.com'
+            },
+            {
+                id: 'google-analytics',
+                name: 'Google Analytics',
+                primaryUse: 'Web analytics',
+                commonScenario: 'Understanding traffic sources, user demographics, and site performance',
+                bestForStage: ['All'],
+                website: 'https://analytics.google.com'
+            }
+        ]
+    },
+    {
+        id: 'feedback',
+        name: 'Customer Feedback & Support',
+        description: 'Tools for collecting user feedback, managing support tickets, and staying close to customers.',
+        tools: [
+            {
+                id: 'intercom',
+                name: 'Intercom',
+                primaryUse: 'Customer messaging and support',
+                commonScenario: 'Talking to users in-app, collecting feedback, and providing support',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://intercom.com'
+            },
+            {
+                id: 'zendesk',
+                name: 'Zendesk',
+                primaryUse: 'Customer support ticketing',
+                commonScenario: 'Managing support requests and identifying product issues from tickets',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://zendesk.com'
+            },
+            {
+                id: 'pendo',
+                name: 'Pendo',
+                primaryUse: 'In-app guidance and feedback',
+                commonScenario: 'Collecting NPS, showing feature announcements, and gathering contextual feedback',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://pendo.io'
+            },
+            {
+                id: 'hotjar',
+                name: 'Hotjar',
+                primaryUse: 'Heatmaps and session recordings',
+                commonScenario: 'Understanding how users interact with features through visual analytics',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://hotjar.com'
+            },
+            {
+                id: 'canny',
+                name: 'Canny',
+                primaryUse: 'Feature request management',
+                commonScenario: 'Collecting, organizing, and prioritizing user feature requests',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://canny.io'
+            },
+            {
+                id: 'uservoice',
+                name: 'UserVoice',
+                primaryUse: 'Customer feedback portal',
+                commonScenario: 'Creating public roadmaps and letting users vote on features',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://uservoice.com'
+            },
+            {
+                id: 'fullstory',
+                name: 'FullStory',
+                primaryUse: 'Session replay and analytics',
+                commonScenario: 'Watching user sessions to understand friction points and bugs',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://fullstory.com'
+            }
+        ]
+    },
+    {
+        id: 'gtm',
+        name: 'Go-to-Market & Launch',
+        description: 'Tools for coordinating launches, managing releases, and communicating product updates.',
+        tools: [
+            {
+                id: 'productboard-portal',
+                name: 'ProductBoard Portal',
+                primaryUse: 'Public roadmap and changelog',
+                commonScenario: 'Sharing what\'s coming next and announcing new releases to customers',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://productboard.com'
+            },
+            {
+                id: 'beamer',
+                name: 'Beamer',
+                primaryUse: 'Product changelog and announcements',
+                commonScenario: 'Notifying users of new features and updates in-app',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://getbeamer.com'
+            },
+            {
+                id: 'chameleon',
+                name: 'Chameleon',
+                primaryUse: 'Product tours and onboarding',
+                commonScenario: 'Creating guided tours for new feature launches',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://chameleon.io'
+            },
+            {
+                id: 'appcues',
+                name: 'Appcues',
+                primaryUse: 'User onboarding flows',
+                commonScenario: 'Building no-code onboarding experiences for new features',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://appcues.com'
+            },
+            {
+                id: 'launchnotes',
+                name: 'LaunchNotes',
+                primaryUse: 'Release communication',
+                commonScenario: 'Coordinating cross-functional launch activities and announcements',
+                bestForStage: ['Scaleup', 'Enterprise'],
+                website: 'https://launchnotes.com'
+            },
+            {
+                id: 'headway',
+                name: 'Headway',
+                primaryUse: 'Product changelog widget',
+                commonScenario: 'Embedding a changelog directly in your product',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://headwayapp.co'
+            }
+        ]
+    },
+    {
+        id: 'ai-productivity',
+        name: 'AI & Productivity Assistants',
+        description: 'AI-powered tools for writing, research, automation, and accelerating PM workflows.',
+        tools: [
+            {
+                id: 'chatgpt',
+                name: 'ChatGPT',
+                primaryUse: 'AI writing and brainstorming',
+                commonScenario: 'Drafting PRDs, generating user stories, and brainstorming feature ideas',
+                bestForStage: ['All'],
+                website: 'https://chat.openai.com'
+            },
+            {
+                id: 'claude',
+                name: 'Claude',
+                primaryUse: 'AI assistant for analysis',
+                commonScenario: 'Analyzing user research, synthesizing feedback, and strategic thinking',
+                bestForStage: ['All'],
+                website: 'https://claude.ai'
+            },
+            {
+                id: 'notion-ai',
+                name: 'Notion AI',
+                primaryUse: 'AI-powered documentation',
+                commonScenario: 'Auto-generating summaries, improving writing, and organizing notes',
+                bestForStage: ['All'],
+                website: 'https://notion.so/product/ai'
+            },
+            {
+                id: 'otter',
+                name: 'Otter.ai',
+                primaryUse: 'Meeting transcription',
+                commonScenario: 'Auto-transcribing user interviews and stakeholder meetings',
+                bestForStage: ['All'],
+                website: 'https://otter.ai'
+            },
+            {
+                id: 'fireflies',
+                name: 'Fireflies.ai',
+                primaryUse: 'AI meeting notes',
+                commonScenario: 'Recording, transcribing, and summarizing product meetings',
+                bestForStage: ['All'],
+                website: 'https://fireflies.ai'
+            },
+            {
+                id: 'mem',
+                name: 'Mem',
+                primaryUse: 'AI-powered note-taking',
+                commonScenario: 'Capturing ideas and having AI surface relevant context',
+                bestForStage: ['Startup', 'Scaleup'],
+                website: 'https://mem.ai'
+            },
+            {
+                id: 'perplexity',
+                name: 'Perplexity',
+                primaryUse: 'AI research assistant',
+                commonScenario: 'Researching competitors, market trends, and technical concepts',
+                bestForStage: ['All'],
+                website: 'https://perplexity.ai'
+            }
+        ]
+    }
+];

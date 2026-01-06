@@ -148,6 +148,30 @@ export class SlackController {
         });
     }
 
+    @Post('questions/:id')
+    async updateQuestion(@Headers('x-user-id') userId: string, @Param('id') id: string, @Body() body: any) {
+        // Verify ownership
+        const existing = await this.prisma.scheduledQuestion.findFirst({
+            where: { id, userId: userId || 'default-user-id' }
+        });
+
+        if (!existing) {
+            throw new NotFoundException('Question not found');
+        }
+
+        return this.prisma.scheduledQuestion.update({
+            where: { id },
+            data: {
+                title: body.title,
+                text: body.text,
+                frequency: body.frequency,
+                timeOfDay: body.timeOfDay,
+                targetType: body.targetType,
+                targetId: body.targetId
+            }
+        });
+    }
+
     @Delete('questions/:id')
     async deleteQuestion(@Headers('x-user-id') userId: string, @Param('id') id: string) {
         return this.prisma.scheduledQuestion.deleteMany({

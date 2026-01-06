@@ -1,14 +1,36 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { startOfDay, endOfDay, addDays, isPast, isToday } from 'date-fns';
+import { startOfDay, endOfDay, addDays, isPast, isToday, startOfWeek } from 'date-fns';
+import { GithubIntelligenceService } from '../integrations/github-intelligence.service';
+import { IntegrationsService } from '../integrations/integrations.service';
+import { GithubProvider } from '../integrations/providers/github.provider';
 
 @Injectable()
 export class DashboardService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private integrationsService: IntegrationsService,
+        private githubIntelligenceService: GithubIntelligenceService
+    ) { }
 
     async getDashboardData(userId: string) {
         const today = new Date();
         const nextWeek = addDays(today, 7);
+
+        // --- GitHub Intelligence Integration ---
+        let githubIntelligence = null;
+        try {
+            const token = await this.integrationsService.getDecryptedToken(userId, 'github');
+            if (token && token.access_token) {
+                const provider = this.integrationsService.getProvider('github') as GithubProvider;
+                // Fetch raw activity
+                const activity = await provider.fetchActivity(token.access_token);
+                // Transform into PM insights
+                githubIntelligence = this.githubIntelligenceService.processActivity(activity);
+            }
+        } catch (e) {
+            console.error('Failed to fetch GitHub Intelligence', e);
+        }
 
         // 1. Last Sync
         const lastSync = await this.prisma.syncRun.findFirst({
@@ -34,7 +56,7 @@ export class DashboardService {
             where: {
                 userId,
                 startTime: {
-                    gte: startOfDay(today),
+                    gte: startOfWeek(today),
                     lte: endOfDay(nextWeek)
                 }
             },
@@ -47,7 +69,10 @@ export class DashboardService {
             startTime: m.startTime.toISOString(),
             endTime: m.endTime.toISOString(),
             attendeeEmails: JSON.parse(m.attendeesJson || '[]').map((a: any) => a.email || a),
-            sourceUrl: null // Add DB field later
+            sourceUrl: m.meetLink || m.htmlLink,
+            type: (m as any).calendarEventType || 'meeting',
+            confidence: (m as any).calendarEventConfidence,
+            reason: (m as any).calendarEventReasoning
         }));
 
         // 4. Tasks (All active or recently updated)
@@ -74,14 +99,13 @@ export class DashboardService {
             sourceUrl: null
         }));
 
-        // Legacy support (optional, can remove if frontend fully updated)
-        // ...
 
         return {
             lastSyncedAt: lastSync?.finishedAt?.toISOString() || null,
             people,
             tasks,
             meetings,
+            githubIntelligence, // New Field
             // Keep legacy fields for safety if needed, but simplified
             focusTasks: [],
             blockers: [],

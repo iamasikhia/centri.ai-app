@@ -4,7 +4,11 @@ import { IntegrationsModule } from './integrations/integrations.module';
 import { SyncModule } from './sync/sync.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ChatModule } from './chat/chat.module';
+import { UpdatesModule } from './updates/updates.module';
+import { TodosModule } from './todos/todos.module';
+import { FundraisingModule } from './fundraising/fundraising.module';
 import { PrismaService } from './prisma/prisma.service';
+import { PrismaModule } from './prisma/prisma.module';
 import { EncryptionService } from './encryption/encryption.service';
 import { ScheduleModule } from '@nestjs/schedule';
 
@@ -12,11 +16,16 @@ import { ScheduleModule } from '@nestjs/schedule';
     imports: [
         ConfigModule.forRoot({ isGlobal: true }),
         ScheduleModule.forRoot(),
+        PrismaModule,
         IntegrationsModule,
         SyncModule,
         DashboardModule,
         ChatModule,
+        UpdatesModule,
+        TodosModule,
+        FundraisingModule,
     ],
-    providers: [PrismaService, EncryptionService],
+    providers: [EncryptionService],
 })
 export class AppModule { }
+

@@ -5,6 +5,8 @@ import Image from 'next/image';
 import { signIn, useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 
+import { Skeleton } from '@/components/ui/skeleton';
+
 export default function LandingPage() {
     const { data: session, status } = useSession();
     const router = useRouter();
@@ -14,6 +16,27 @@ export default function LandingPage() {
             router.push('/dashboard');
         }
     }, [status, router]);
+
+    if (status === 'loading') {
+        return (
+            <div className="flex min-h-screen w-full items-center justify-center bg-background px-4">
+                <div className="w-full max-w-[420px] mx-auto space-y-8 flex flex-col items-center">
+                    <Skeleton className="h-20 w-20 rounded-2xl" />
+                    <div className="space-y-2 w-full flex flex-col items-center">
+                        <Skeleton className="h-10 w-48" />
+                        <Skeleton className="h-4 w-64" />
+                    </div>
+                    <div className="w-full space-y-3">
+                        <Skeleton className="h-20 w-full rounded-lg" />
+                        <Skeleton className="h-20 w-full rounded-lg" />
+                        <Skeleton className="h-20 w-full rounded-lg" />
+                    </div>
+                    <Skeleton className="h-11 w-full rounded-lg" />
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex min-h-screen w-full items-center justify-center bg-background text-foreground px-4">
             <div className="w-full max-w-[420px] mx-auto space-y-8">

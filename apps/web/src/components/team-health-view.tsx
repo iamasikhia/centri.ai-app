@@ -30,9 +30,9 @@ function MemberHealthRow({ data }: { data: any }) {
     const person = formatPerson(data.person, data.person?.email || 'Unknown');
 
     return (
-        <div className="border rounded bg-white overflow-hidden transition-all">
+        <div className="border rounded bg-card overflow-hidden transition-all">
             <div
-                className="flex items-center justify-between p-3 cursor-pointer hover:bg-slate-50"
+                className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted"
                 onClick={() => setExpanded(!expanded)}
             >
                 <div className="flex items-center gap-3">
@@ -44,13 +44,13 @@ function MemberHealthRow({ data }: { data: any }) {
                     </div>
                 </div>
                 <div className="flex gap-2">
-                    {data.blocked > 0 && <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded font-medium">{data.blocked} Blocked</span>}
-                    {data.overdue > 0 && <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded font-medium">{data.overdue} Overdue</span>}
+                    {data.blocked > 0 && <span className="px-2 py-1 bg-destructive/10 text-destructive text-xs rounded font-medium">{data.blocked} Blocked</span>}
+                    {data.overdue > 0 && <span className="px-2 py-1 bg-warning/10 text-warning text-xs rounded font-medium">{data.overdue} Overdue</span>}
                 </div>
             </div>
 
             {expanded && (
-                <div className="bg-slate-50 p-3 border-t space-y-3">
+                <div className="bg-muted/30 p-3 border-t space-y-3">
                     <SmallTaskList title="Blocked" tasks={data.tasks.blocked} />
                     <SmallTaskList title="Overdue" tasks={data.tasks.overdue} />
                     <SmallTaskList title="Due Soon" tasks={data.tasks.dueSoon} />
@@ -73,7 +73,7 @@ function SmallTaskList({ title, tasks }: { title: string, tasks: Task[] }) {
                     <li key={t.id} className="text-xs flex items-center justify-between gap-2">
                         <span className="truncate">{t.title}</span>
                         {t.sourceUrl && (
-                            <a href={t.sourceUrl} target="_blank" rel="noopener" className="text-slate-400 hover:text-primary">
+                            <a href={t.sourceUrl} target="_blank" rel="noopener" className="text-muted-foreground hover:text-primary">
                                 <ExternalLink className="w-3 h-3" />
                             </a>
                         )}
@@ -90,7 +90,7 @@ function Avatar({ person, className }: { person: Person, className?: string }) {
     }
     const initials = (person.displayName?.[0] || person.email?.[0] || '?').toUpperCase();
     return (
-        <div className={cn("rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-xs", className || "w-8 h-8")}>
+        <div className={cn("rounded-full bg-muted text-muted-foreground flex items-center justify-center font-bold text-xs", className || "w-8 h-8")}>
             {initials}
         </div>
     );
