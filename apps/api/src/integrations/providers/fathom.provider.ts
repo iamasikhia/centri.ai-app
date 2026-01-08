@@ -157,7 +157,7 @@ export class FathomProvider implements IProvider {
 
                 } catch (e) {
                     console.warn(`[Fathom] Transcript not ready or failed for ${meetingId}`, e.message);
-                }to
+                }
                 console.log(`[Fathom] Processed ${meetingId}: text len=${fullTranscriptText.length}, segments=${transcriptSegments.length}`);
 
                 // Duration handling: Fathom API uses scheduled_start_time and scheduled_end_time

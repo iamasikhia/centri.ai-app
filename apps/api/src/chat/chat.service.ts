@@ -11,7 +11,6 @@ export interface ChatResponse {
     insights: string[];
     actions: Array<{ label: string; type: string; uri?: string }>;
     followUps: string[];
-    followUps: string[];
 }
 
 export interface Conversation {
@@ -164,7 +163,7 @@ export class ChatService {
                     conversationId: currentConversationId,
                     role: 'assistant',
                     content: response.answer, // Main text content
-                    data: response // Store full structured response
+                    data: response as any // Store full structured response
                 }
             });
 
