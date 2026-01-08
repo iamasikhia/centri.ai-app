@@ -18,6 +18,12 @@ export class UpdatesController {
         return this.service.getUpdates(userId);
     }
 
+    @Get('newsletters')
+    findNewsletters(@Req() req: any) {
+        const userId = req.headers['x-user-id'] || 'default-user-id';
+        return this.service.getNewsletters(userId);
+    }
+
     @Post(':id/read')
     markRead(@Param('id') id: string, @Req() req: any) {
         const userId = req.headers['x-user-id'] || 'default-user-id';

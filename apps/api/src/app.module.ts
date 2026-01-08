@@ -7,6 +7,7 @@ import { ChatModule } from './chat/chat.module';
 import { UpdatesModule } from './updates/updates.module';
 import { TodosModule } from './todos/todos.module';
 import { FundraisingModule } from './fundraising/fundraising.module';
+import { MeetingsModule } from './meetings/meetings.module';
 import { PrismaService } from './prisma/prisma.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { EncryptionService } from './encryption/encryption.service';
@@ -24,6 +25,7 @@ import { ScheduleModule } from '@nestjs/schedule';
         UpdatesModule,
         TodosModule,
         FundraisingModule,
+        MeetingsModule,
     ],
     providers: [EncryptionService],
 })

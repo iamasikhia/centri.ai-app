@@ -27,6 +27,19 @@ export class FundraisingService {
         const results = [];
         for (const opp of opportunities) {
             try {
+                // Check if duplicate exists
+                const existing = await this.prisma.opportunity.findFirst({
+                    where: {
+                        userId,
+                        name: opp.name
+                    }
+                });
+
+                if (existing) {
+                    console.log(`[Fundraising] Skipping duplicate opportunity: ${opp.name}`);
+                    continue;
+                }
+
                 // Ensure arrays are passed as arrays
                 const whatItOffers = Array.isArray(opp.whatItOffers) ? opp.whatItOffers : [];
                 const criteria = Array.isArray(opp.criteria) ? opp.criteria : [];

@@ -19,17 +19,17 @@ export class SlackProvider implements IProvider {
       const res = await axios.post('https://slack.com/api/chat.postMessage', {
         channel: channelId,
         text: text,
-        as_user: true
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.data.ok) {
         console.warn(`[Slack] Failed to send message to ${channelId}:`, res.data.error);
+        throw new Error(res.data.error);
       }
-      return res.data.ok;
+      return true;
     } catch (e) {
       console.error(`[Slack] Error sending message to ${channelId}:`, e.message);
-      return false;
+      throw new Error(e.message || 'Unknown network error');
     }
   }
 

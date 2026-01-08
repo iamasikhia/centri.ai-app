@@ -1,490 +1,745 @@
-
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '../prisma/prisma.service';
-import { UIResponse, Intent, UIBlock, SourceCheck, UIListItem } from './types';
-import { isPhysicalMeeting, MeetingInfo } from './logic/meeting-analysis';
-import * as crypto from 'crypto';
 import OpenAI from 'openai';
+import { PrismaService } from '../prisma/prisma.service';
+import { IntegrationsService } from '../integrations/integrations.service';
+
+// Types matching the JSON structure requested
+export interface ChatResponse {
+    answer: string;
+    citations: Array<{ source: string; type: string; count?: number; link?: string }>;
+    insights: string[];
+    actions: Array<{ label: string; type: string; uri?: string }>;
+    followUps: string[];
+    followUps: string[];
+}
+
+export interface Conversation {
+    id: string;
+    title: string;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface Message {
+    id: string;
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    data?: any;
+    createdAt: Date;
+}
 
 @Injectable()
 export class ChatService {
-    private openai: OpenAI | null = null;
+    private readonly logger = new Logger(ChatService.name);
+    private openai: OpenAI;
 
     constructor(
+        private configService: ConfigService,
         private prisma: PrismaService,
-        private config: ConfigService
+        private integrationsService: IntegrationsService
     ) {
-        const apiKey = this.config.get('OPENAI_API_KEY');
+        const apiKey = this.configService.get<string>('OPENAI_API_KEY');
         if (apiKey) {
             this.openai = new OpenAI({ apiKey });
-            console.log("ChatService initialized. AI Model configured: gpt-4o");
-        } else {
-            console.warn("⚠️ OPENAI_API_KEY is not set in .env. LLM features will be disabled.");
         }
     }
 
-    async processMessage(userId: string, message: string): Promise<UIResponse> {
-        const intent = this.classifyIntent(message);
-        const start = Date.now();
+    // --- Persistence Methods ---
 
-        let response: Partial<UIResponse> = {};
-        const debug: { sourcesChecked: SourceCheck[], latencyMs?: number } = { sourcesChecked: [] };
+    async getConversations(userId: string): Promise<Conversation[]> {
+        return this.prisma.conversation.findMany({
+            where: { userId },
+            orderBy: { updatedAt: 'desc' },
+            select: { id: true, title: true, createdAt: true, updatedAt: true }
+        }) as unknown as Conversation[];
+    }
 
-        const addCheck = (c: SourceCheck) => debug.sourcesChecked.push(c);
+    async getConversationMessages(conversationId: string, userId: string): Promise<Message[]> {
+        const conversation = await this.prisma.conversation.findUnique({
+            where: { id: conversationId },
+        });
 
+        if (!conversation || conversation.userId !== userId) {
+            throw new Error('Conversation not found or access denied');
+        }
+
+        return this.prisma.chatMessage.findMany({
+            where: { conversationId },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true, role: true, content: true, data: true, createdAt: true }
+        }) as unknown as Message[];
+    }
+
+    async createConversation(userId: string, title?: string): Promise<Conversation> {
+        // Ensure user exists before creating conversation
+        const userExists = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!userExists) {
+            // Create the default user if missing
+            await this.prisma.user.create({
+                data: {
+                    id: userId,
+                    email: `${userId}@example.com`, // Fallback email
+                    name: 'Default User'
+                }
+            });
+        }
+
+        return this.prisma.conversation.create({
+            data: {
+                userId,
+                title: title || 'New Chat'
+            }
+        }) as unknown as Conversation;
+    }
+
+    async deleteConversation(conversationId: string, userId: string): Promise<void> {
+        const conversation = await this.prisma.conversation.findUnique({
+            where: { id: conversationId },
+        });
+
+        if (conversation && conversation.userId === userId) {
+            await this.prisma.conversation.delete({ where: { id: conversationId } });
+        }
+    }
+
+    async updateConversationTitle(conversationId: string, title: string): Promise<void> {
+        await this.prisma.conversation.update({
+            where: { id: conversationId },
+            data: { title }
+        });
+    }
+
+    // --- Core Logic ---
+
+    async processQuery(userId: string, query: string, conversationId?: string): Promise<ChatResponse & { conversationId: string }> {
         try {
-            if (intent === 'generate_prd') {
-                response = await this.handleGeneratePRD(userId, message);
-            } else if (intent === 'generate_architecture') {
-                response = await this.handleGenerateArchitecture(userId, message);
-            } else if (intent === 'get_team_members') {
-                response = await this.handleGetTeamMembers(userId, addCheck);
-            } else if (intent === 'get_next_meeting') {
-                response = await this.handleGetNextMeeting(userId, addCheck);
-            } else if (intent === 'is_next_meeting_physical') {
-                response = await this.handleIsNextMeetingPhysical(userId, addCheck);
-            } else if (intent === 'help_connect_integrations') {
-                response = this.handleConnectIntegrations();
-            } else {
-                response = await this.handleUnknownIntent(userId, message, addCheck);
+            if (!this.openai) {
+                throw new Error('OpenAI API not configured');
+            }
+
+            // 1. Resolve Conversation ID
+            let currentConversationId = conversationId;
+            let isNewConversation = false;
+
+            if (!currentConversationId) {
+                // Create new conversation
+                const title = query.length > 50 ? query.substring(0, 50) + '...' : query;
+                const newConv = await this.createConversation(userId, title);
+                currentConversationId = newConv.id;
+                isNewConversation = true;
+            }
+
+            // 2. Load History (if existing conversation)
+            let historyMessages: any[] = [];
+            if (!isNewConversation) {
+                const dbMessages = await this.getConversationMessages(currentConversationId, userId);
+                historyMessages = dbMessages.map(m => ({ role: m.role, content: m.content }));
+            }
+
+            // 3. Save User Message
+            await this.prisma.chatMessage.create({
+                data: {
+                    conversationId: currentConversationId,
+                    role: 'user',
+                    content: query
+                }
+            });
+
+            this.logger.log(`Processing query for user ${userId}: "${query}" (Conv: ${currentConversationId})`);
+
+            // 4. Update Conversation Title (Async, for better UX)
+            if (isNewConversation) {
+                this.generateTitle(currentConversationId, query, userId).catch(err =>
+                    this.logger.error('Failed to generate title', err)
+                );
+            }
+
+            // 5. Fetch Context & Process with LLM
+            const response = await this.generateResponse(userId, query, historyMessages);
+
+            // 6. Save Assistant Message
+            await this.prisma.chatMessage.create({
+                data: {
+                    conversationId: currentConversationId,
+                    role: 'assistant',
+                    content: response.answer, // Main text content
+                    data: response // Store full structured response
+                }
+            });
+
+            // Update UpdatedAt
+            await this.prisma.conversation.update({
+                where: { id: currentConversationId },
+                data: { updatedAt: new Date() }
+            });
+
+            return { ...response, conversationId: currentConversationId };
+
+        } catch (e) {
+            this.logger.error(`Error processing query`, e);
+            return {
+                conversationId: conversationId || 'error',
+                answer: "I encountered an error processing your request. Please try again.",
+                citations: [],
+                insights: [],
+                actions: [],
+                followUps: []
+            };
+        }
+    }
+
+    private async generateTitle(conversationId: string, firstMessage: string, userId: string) {
+        try {
+            const completion = await this.openai.chat.completions.create({
+                model: 'gpt-4o',
+                messages: [
+                    { role: 'system', content: 'Generate a short, concise title (max 6 words) for a chat that starts with this message. Return ONLY the title text, nothing else.' },
+                    { role: 'user', content: firstMessage }
+                ],
+                max_tokens: 20
+            });
+            const title = completion.choices[0].message.content?.trim().replace(/^"|"$/g, '');
+            if (title) {
+                await this.updateConversationTitle(conversationId, title);
             }
         } catch (e) {
-            console.error(e);
-            response = {
-                title: "Error",
-                blocks: [{ type: "callout", tone: "danger", title: "System Error", body: "Something went wrong processing your request." }]
-            };
-        }
-
-        return {
-            kind: "ui_response",
-            requestId: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
-            intent,
-            title: response.title,
-            subtitle: response.subtitle,
-            sessionTitle: this.generateSessionTitle(intent),
-            blocks: response.blocks || [],
-            debug: { ...debug, latencyMs: Date.now() - start }
-        };
-    }
-
-    private generateSessionTitle(intent: Intent): string | undefined {
-        switch (intent) {
-            case 'get_team_members': return 'Team Overview';
-            case 'get_next_meeting': return 'Next Meeting';
-            case 'is_next_meeting_physical': return 'Meeting Location Check';
-            case 'help_connect_integrations': return 'Integration Setup';
-            case 'get_blockers': return 'Active Blockers';
-            case 'get_meetings': return 'Schedule Overview';
-            case 'get_task_health': return 'Task Health Analysis';
-            default: return undefined;
+            this.logger.warn('Title generation failed', e);
         }
     }
 
-    private classifyIntent(msg: string): Intent {
-        const lower = msg.toLowerCase();
-        if (lower.match(/prd|requirements document|product spec/)) return 'generate_prd';
-        if (lower.match(/architecture|system design|diagram|mermaid/)) return 'generate_architecture';
-        if (lower.match(/physical|in person|virtual|remote|where.*meeting/)) return 'is_next_meeting_physical';
-        if (lower.match(/team|members|people|staff|who works/)) return 'get_team_members';
-        if (lower.match(/meeting/)) return 'get_next_meeting';
-        if (lower.match(/connect|integrations|setup|configure/)) return 'help_connect_integrations';
-        return 'unknown';
-    }
+    async generateResponse(userId: string, query: string, history: any[] = []): Promise<ChatResponse> {
+        this.logger.log(`Generatng response for query: "${query}"`);
 
-    private async handleUnknownIntent(userId: string, message: string, addCheck: (c: SourceCheck) => void): Promise<Partial<UIResponse>> {
-        if (!this.openai) {
+        // 1. Fetch Context (Real Data Only)
+        const context = await this.buildContext(userId, query);
+
+        // Debug Log
+        this.logger.log(`Context built with integrations: ${JSON.stringify(context.userContext.connected_integrations)}`);
+        this.logger.log(`Real Data Keys found: ${Object.keys(context.integrationData).join(', ')}`);
+
+        // Check if we needed data but got none
+        const topic = context.userContext.topic_detected;
+        const hasRelevantData =
+            (topic === 'calendar' && context.integrationData.google_calendar) ||
+            (topic === 'slack' && context.integrationData.slack) ||
+            (topic === 'github' && context.integrationData.github); // Truthy if object exists (even with empty arrays)
+
+        if (topic !== 'general' && !hasRelevantData) {
+            // If specific intent but no data, check why
+            const connected = context.userContext.connected_integrations;
+            const neededProvider = topic === 'calendar' ? 'Google Calendar' : (topic === 'github' ? 'GitHub' : 'Slack');
+
+            if (!connected.includes(neededProvider)) {
+                return {
+                    answer: `I can't check check your ${topic} because **${neededProvider}** is not connected.`,
+                    citations: [],
+                    insights: [],
+                    actions: [{ label: `Connect ${neededProvider}`, type: 'open_url', uri: '/settings/integrations' }],
+                    followUps: []
+                };
+            }
+
+            // Connected but no data found (or error)
             return {
-                title: "Configuration Needed",
-                blocks: [
-                    { type: "callout", tone: "warning", title: "AI Not Configured", body: "Please add OPENAI_API_KEY to apps/api/.env to enable reasoning capabilities." }
-                ]
+                answer: `I checked your **${neededProvider}** but couldn't find any recent data matching your request.`,
+                citations: [],
+                insights: [],
+                actions: [{ label: `Check ${neededProvider} Status`, type: 'open_url', uri: '/settings/integrations' }],
+                followUps: []
             };
         }
+
+        // 2. Construct System Prompt (Strict Real Data Only)
+        const systemPrompt = `
+You are Centri Co-Pilot, an AI assistant.
+
+# CRITICAL RULES
+1. **ONLY use data explicitly provided in the context below.**
+2. **NEVER make up meetings, emails, or messages.**
+3. **NEVER say "You might have..." or "Typically...".**
+4. **If data is missing, explicitly say "I don't have access to that data".**
+5. **Always cite the actual source using [Source Name].**
+6. **Quote exact meeting titles, email subjects, and Slack messages.**
+"You have 5 unread emails from @sarah [Gmail]. Your next 1:1 with her is tomorrow at 4pm [Google Calendar]. 
+Last time you met (Dec 15), you discussed the API redesign based on your calendar history."
+
+**Example 3: Fathom + GitHub + Calendar**
+"Your last meeting 'Sprint Planning' on Jan 7 [Fathom] had these action items:
+- Review PR #241 (OAuth implementation) - Currently in review [GitHub]
+- Schedule design sync - Not yet on calendar [Google Calendar]
+
+Would you like me to help schedule the design sync?"
+
+# Response Format
+Return a strictly valid JSON object:
+{
+  "answer": "Direct answer using ONLY provided data with inline citations [Source].",
+  "citations": [{"source": "Source Name", "type": "calendar", "count": 1}],
+  "insights": ["Pattern detected from data", "Connection between sources"],
+  "actions": [{"label": "Action Name", "type": "open_url", "uri": "url"}],
+  "followUps": ["Related question 1", "Related question 2"]
+}
+
+# Important Guidelines
+- Use bullet points for lists
+- Include specific times, dates, names from the data
+- Highlight patterns (e.g., "You have 18 hours of meetings this week - higher than usual")
+- Connect related information across sources
+- Suggest actionable next steps
+- Keep responses concise but informative
+`;
+
+        const userPrompt = `
+User Query: "${query}"
+
+REAL DATA FROM INTEGRATIONS (Use ONLY this):
+${JSON.stringify(context.integrationData, null, 2)}
+
+User Context: ${JSON.stringify(context.userContext)}
+
+If the 'REAL DATA' object is empty or missing the requested info, explicitly state that you found nothing.
+`;
 
         try {
             const completion = await this.openai.chat.completions.create({
+                model: 'gpt-4o',
                 messages: [
-                    { role: "system", content: "You are Centri. Analyze the user's request. If it matches a specific capability (Checking Meeting, Checking Team), call the corresponding tool function. Otherwise, answer the question helpfully using Markdown." },
-                    { role: "user", content: message }
+                    { role: 'system', content: systemPrompt },
+                    ...history.map(msg => ({ role: msg.role, content: msg.content })),
+                    { role: 'user', content: userPrompt }
                 ],
-                model: "gpt-4o",
-                tools: [
-                    { type: "function", function: { name: "get_next_meeting", description: "Get details about the next upcoming meeting" } },
-                    { type: "function", function: { name: "get_team_members", description: "Get list of team members from Slack" } },
-                    { type: "function", function: { name: "is_next_meeting_physical", description: "Check if the next meeting is physical, virtual, or in-person" } },
-                    { type: "function", function: { name: "connect_integration", description: "Help user connect integrations like Slack or Calendar" } }
-                ],
-                tool_choice: "auto"
+                response_format: { type: 'json_object' },
+                temperature: 0.3, // Lower temperature for factual accuracy
             });
 
-            const choice = completion.choices[0].message;
+            const content = completion.choices[0].message.content;
+            return JSON.parse(content || '{}');
 
-            if (choice.tool_calls && choice.tool_calls.length > 0) {
-                const toolCall = choice.tool_calls[0];
-                const fn = (toolCall as any).function.name;
-
-                if (fn === 'get_next_meeting') return await this.handleGetNextMeeting(userId, addCheck);
-                if (fn === 'get_team_members') return await this.handleGetTeamMembers(userId, addCheck);
-                if (fn === 'is_next_meeting_physical') return await this.handleIsNextMeetingPhysical(userId, addCheck);
-                if (fn === 'connect_integration') return this.handleConnectIntegrations();
-            }
-
-            const text = choice.content || "I'm sorry, I couldn't generate a response.";
+        } catch (e) {
+            this.logger.error('Error processing chat query', e);
             return {
-                title: "Centri",
-                blocks: [{ type: "text", markdown: text }]
-            };
-
-        } catch (e: any) {
-            console.error("LLM Error", e);
-            const msg = e?.error?.message || e?.message || "Could not connect to AI service.";
-            return {
-                title: "Error",
-                blocks: [{ type: "callout", tone: "danger", title: "AI Error", body: msg }]
+                answer: "I encountered an error analyzing your data. Please try again.",
+                citations: [],
+                insights: [],
+                actions: [],
+                followUps: []
             };
         }
     }
 
-    private async handleGetTeamMembers(userId: string, addCheck: (c: SourceCheck) => void): Promise<Partial<UIResponse>> {
-        const creds = await this.prisma.integrations.findFirst({
-            where: { userId, provider: 'slack' }
-        });
+    private async buildContext(userId: string, query: string) {
+        const topic = this.detectTopic(query);
+        const integrationData: any = {};
+        const connectedIntegrationsStr = [];
 
-        if (!creds) {
-            addCheck({ source: 'slack', status: 'not_connected', message: 'No Slack credentials found' });
-            return {
-                title: "Team Members",
-                blocks: [
-                    { type: "text", markdown: "I noticed you haven't connected Slack yet. Connect it to see your team." },
-                    {
-                        type: "callout",
-                        tone: "warning",
-                        title: "Slack not connected",
-                        body: "Connect Slack to see your team members.",
-                        actions: [{ type: "button", label: "Connect Slack", action: "connect_integration", params: { provider: "slack" } }]
+        this.logger.log(`Detecting context for topic: ${topic}`);
+
+        const connections = await this.integrationsService.getIntegrationStatus(userId);
+        const connectedProviders = connections.map(c => c.provider);
+        this.logger.log(`User has connected providers: ${connectedProviders.join(', ')}`);
+
+        // --- Google Calendar ---
+        if ((topic === 'calendar' || topic === 'general') && connectedProviders.includes('google')) {
+            try {
+                this.logger.log('Fetching Google Calendar data...');
+                let token = await this.integrationsService.getDecryptedToken(userId, 'google');
+                if (token && token.access_token) {
+                    const start = new Date().toISOString();
+                    const end = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+                    let calRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${start}&timeMax=${end}&singleEvents=true&orderBy=startTime&maxResults=10`, {
+                        headers: { Authorization: `Bearer ${token.access_token}` }
+                    });
+
+                    // If 401, try to refresh the token
+                    if (calRes.status === 401 && token.refresh_token) {
+                        this.logger.log('Access token expired, refreshing...');
+                        try {
+                            const googleProvider = this.integrationsService.getProvider('google') as any;
+                            const newTokens = await googleProvider.refreshTokens(token.refresh_token);
+
+                            // Merge new tokens with existing (preserve refresh_token if not returned)
+                            const updatedTokens = {
+                                ...token,
+                                ...newTokens,
+                                refresh_token: newTokens.refresh_token || token.refresh_token
+                            };
+
+                            // Save the new tokens
+                            await this.integrationsService.saveTokens('google', userId, updatedTokens);
+
+                            // Retry the request with new token
+                            calRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${start}&timeMax=${end}&singleEvents=true&orderBy=startTime&maxResults=10`, {
+                                headers: { Authorization: `Bearer ${updatedTokens.access_token}` }
+                            });
+
+                            this.logger.log('Token refreshed successfully');
+                        } catch (refreshError) {
+                            this.logger.error('Failed to refresh Google token', refreshError);
+                        }
                     }
-                ]
-            };
-        }
 
-        addCheck({ source: 'slack', status: 'connected' });
-
-        const members = await this.prisma.teamMember.findMany({ where: { userId } });
-
-        if (members.length === 0) {
-            addCheck({ source: 'slack', status: 'checked_empty', itemCount: 0 });
-            return {
-                title: "Team Members",
-                blocks: [
-                    { type: "text", markdown: "I'm connected to Slack, but I couldn't find any team members synced yet." },
-                    {
-                        type: "callout",
-                        tone: "info",
-                        title: "No members found",
-                        body: "Try syncing again.",
-                        actions: [{ type: "button", label: "Sync Now", action: "sync_now", params: { provider: "slack" } }]
+                    if (calRes.ok) {
+                        const data = await calRes.json();
+                        if (data.items && data.items.length > 0) {
+                            integrationData.google_calendar = {
+                                meetings: data.items.map((m: any) => ({
+                                    title: m.summary,
+                                    start: m.start.dateTime || m.start.date,
+                                    end: m.end.dateTime || m.end.date,
+                                    attendees: m.attendees?.map((a: any) => a.email) || [],
+                                    link: m.htmlLink,
+                                    status: m.status
+                                }))
+                            };
+                            connectedIntegrationsStr.push('Google Calendar');
+                            this.logger.log(`Found ${data.items.length} calendar events`);
+                        } else {
+                            this.logger.log('Google Calendar connected but returned 0 events');
+                        }
+                    } else {
+                        const errText = await calRes.text();
+                        this.logger.error(`Google Calendar API Error: ${calRes.status} ${errText}`);
                     }
-                ]
-            };
-        }
-
-        addCheck({ source: 'slack', status: 'checked_ok', itemCount: members.length });
-
-        return {
-            title: "Team Members",
-            blocks: [
-                { type: "text", markdown: `I found **${members.length} team members** connected via Slack:` },
-                {
-                    type: "list",
-                    title: "Team Members",
-                    items: members.map(m => ({
-                        title: m.name || m.email || 'Unknown',
-                        subtitle: m.email || 'No email',
-                        avatarUrl: m.avatarUrl || undefined,
-                        badges: [{ label: 'Slack', tone: 'neutral' }]
-                    } as UIListItem))
                 }
-            ]
-        };
-    }
-
-    private async handleGetNextMeeting(userId: string, addCheck: (c: SourceCheck) => void): Promise<Partial<UIResponse>> {
-        const creds = await this.prisma.integrations.findFirst({
-            where: { userId, provider: 'google' }
-        });
-
-        if (!creds) {
-            addCheck({ source: 'google_calendar', status: 'not_connected' });
-            return {
-                title: "Next Meeting",
-                blocks: [
-                    { type: "text", markdown: "You need to connect Google Calendar first." },
-                    {
-                        type: "callout",
-                        tone: "warning",
-                        title: "Calendar not connected",
-                        body: "Connect Google Calendar to see your meetings.",
-                        actions: [{ type: "button", label: "Connect Calendar", action: "connect_integration", params: { provider: "google_calendar" } }]
-                    }
-                ]
-            };
-        }
-
-        addCheck({ source: 'google_calendar', status: 'connected' });
-
-        const now = new Date();
-        const next = await this.prisma.meeting.findFirst({
-            where: { userId, startTime: { gt: now } },
-            orderBy: { startTime: 'asc' }
-        });
-
-        if (!next) {
-            addCheck({ source: 'google_calendar', status: 'checked_empty' });
-            return {
-                title: "Next Meeting",
-                blocks: [
-                    { type: "text", markdown: "No upcoming meetings found in your calendar for today." }
-                ]
-            };
-        }
-
-        addCheck({ source: 'google_calendar', status: 'checked_ok', itemCount: 1 });
-
-        const n = next as any;
-        let meetLink = n.meetLink;
-        const location = n.location;
-        const htmlLink = n.htmlLink;
-
-        if (!meetLink && location && (location.startsWith('http') || location.startsWith('https'))) {
-            meetLink = location;
-        }
-        if (!meetLink && n.description) {
-            const urlMatch = n.description.match(/(https?:\/\/[^\s]+)/);
-            if (urlMatch) meetLink = urlMatch[0];
-        }
-        if (!meetLink && n.title.includes('Alice')) {
-            meetLink = 'https://meet.google.com/abc-defg-hij';
-        }
-
-        const timeStr = new Date(n.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-
-        // Fallback to searching calendar if no link
-        const fallbackLink = `https://calendar.google.com/calendar/u/0/r/day/${new Date(n.startTime).toISOString().split('T')[0].replace(/-/g, '/')}`;
-
-        return {
-            title: "Next Meeting",
-            blocks: [
-                { type: "text", markdown: `Your next meeting is **${n.title}** at **${timeStr}**:` },
-                {
-                    type: "event",
-                    title: n.title,
-                    start: n.startTime.toISOString(),
-                    end: n.endTime.toISOString(),
-                    location: location || (meetLink ? 'Google Meet' : undefined),
-                    action: meetLink
-                        ? { type: 'button', label: 'Join Meeting', action: 'open_url', params: { url: meetLink } }
-                        : { type: 'link', label: 'View in Calendar', href: htmlLink || fallbackLink }
-                }
-            ]
-        };
-    }
-
-    private async handleIsNextMeetingPhysical(userId: string, addCheck: (c: SourceCheck) => void): Promise<Partial<UIResponse>> {
-        const creds = await this.prisma.integrations.findFirst({
-            where: { userId, provider: 'google' }
-        });
-
-        if (!creds) {
-            addCheck({ source: 'google_calendar', status: 'not_connected' });
-            return {
-                title: "Next Meeting",
-                blocks: [
-                    { type: "callout", tone: "warning", title: "Calendar not connected", body: "Connect Google Calendar to answer this." }
-                ]
-            };
-        }
-
-        const now = new Date();
-        const next = await this.prisma.meeting.findFirst({
-            where: { userId, startTime: { gt: now } },
-            orderBy: { startTime: 'asc' }
-        });
-
-        if (!next) {
-            return {
-                title: "Next Meeting",
-                blocks: [
-                    { type: "text", markdown: "No upcoming meetings found." }
-                ]
-            };
-        }
-
-        const n = next as any;
-
-        // Extract links logic
-        let meetLink = n.meetLink;
-        const location = n.location;
-        const htmlLink = n.htmlLink;
-
-        if (!meetLink && location && (location.startsWith('http') || location.startsWith('https'))) {
-            meetLink = location;
-        }
-        if (!meetLink && n.description) {
-            const urlMatch = n.description.match(/(https?:\/\/[^\s]+)/);
-            if (urlMatch) meetLink = urlMatch[0];
-        }
-
-        const info: MeetingInfo = {
-            location: n.location,
-            description: n.description,
-            meetLink: meetLink,
-            htmlLink: n.htmlLink
-        };
-
-        const analysis = isPhysicalMeeting(info);
-
-        return {
-            title: "Meeting Analysis",
-            blocks: [
-                {
-                    type: "text",
-                    markdown: analysis.reason
-                },
-                ...(analysis.evidence.length > 0 ? [{
-                    type: "list",
-                    title: "Evidence",
-                    items: analysis.evidence.map(e => ({ title: e.label, subtitle: e.value } as UIListItem))
-                } as UIBlock] : []),
-                {
-                    type: "event",
-                    title: n.title,
-                    start: n.startTime.toISOString(),
-                    end: n.endTime.toISOString(),
-                    location: n.location || (meetLink ? 'Google Meet' : undefined),
-                    action: meetLink
-                        ? { type: 'button', label: 'Join Meeting', action: 'open_url', params: { url: meetLink } }
-                        : { type: "link", label: "View in Calendar", href: n.htmlLink || `https://calendar.google.com/calendar/r` }
-                }
-            ]
-        };
-    }
-
-    private handleConnectIntegrations(): Partial<UIResponse> {
-        return {
-            title: "Connect Integrations",
-            blocks: [
-                { type: "text", markdown: "Here are the integrations you can connect:" },
-                {
-                    type: "list",
-                    title: "Available Integrations",
-                    items: [
-                        { title: "Slack", subtitle: "For team and messages", badges: [{ label: 'Chat', tone: 'neutral' }] },
-                        { title: "Google Calendar", subtitle: "For meetings", badges: [{ label: 'Calendar', tone: 'neutral' }] },
-                        { title: "Google Meet", subtitle: "Video conferencing", badges: [{ label: 'Video', tone: 'neutral' }] },
-                        { title: "Microsoft Teams", subtitle: "Chat & Meetings", badges: [{ label: 'Chat', tone: 'neutral' }] },
-                        { title: "Fathom", subtitle: "AI Meeting Recorder", badges: [{ label: 'AI', tone: 'good' }] }
-                    ]
-                },
-                {
-                    type: "text",
-                    markdown: "Go to Settings > Integrations to setup."
-                },
-                {
-                    type: "button", label: "Go to Settings", action: "connect_integration", params: { provider: "all" }
-                } as any
-            ]
-        };
-    }
-
-    private async handleGeneratePRD(userId: string, message: string): Promise<Partial<UIResponse>> {
-        if (!this.openai) return { title: "Configuration Needed", blocks: [{ type: "text", markdown: "AI not configured." }] };
-
-        const prompt = `Generate a detailed Product Requirements Document (PRD) for the request: "${message}".
-        Return a JSON object with this exact structure:
-        {
-            "title": "PRD Generated",
-            "subtitle": "Created with Centri Co-Pilot",
-            "blocks": [
-                { "type": "text", "markdown": "Here is the generated PRD based on your requirements." }
-            ],
-            "artifact": {
-                "id": "prd-gen",
-                "type": "prd",
-                "title": "Generated PRD",
-                "content": {
-                    "problem": "Clear problem statement...",
-                    "goals": ["Goal 1", "..."],
-                    "userStories": [
-                        { "id": "US-1", "role": "User", "action": "action", "benefit": "benefit" }
-                    ],
-                    "techStack": ["Stack item 1", "..."],
-                    "risks": [
-                        { "risk": "Risk description", "mitigation": "Mitigation strategy" }
-                    ]
-                }
-            }
-        }`;
-
-        try {
-            const completion = await this.openai.chat.completions.create({
-                model: "gpt-4o",
-                messages: [
-                    { role: "system", content: "You are an expert Product Manager. Return valid JSON matching the requested structure." },
-                    { role: "user", content: prompt }
-                ],
-                response_format: { type: "json_object" }
-            });
-
-            const content = completion.choices[0].message.content || "{}";
-            const response = JSON.parse(content);
-            if (response.artifact) response.artifact.id = `prd-${Date.now()}`;
-            return response;
-        } catch (e: any) {
-            console.error("PRD Gen Error", e);
-            return { title: "Error", blocks: [{ type: "callout", tone: "danger", title: "Generation Failed", body: e.message }] };
-        }
-    }
-
-    private async handleGenerateArchitecture(userId: string, message: string): Promise<Partial<UIResponse>> {
-        if (!this.openai) return { title: "Configuration Needed", blocks: [{ type: "text", markdown: "AI not configured." }] };
-
-        const prompt = `Generate a System Architecture for the request: "${message}".
-        Return a JSON object with this exact structure:
-        {
-            "title": "Architecture Design",
-            "blocks": [
-                { "type": "text", "markdown": "Here is the system architecture diagram." }
-            ],
-            "artifact": {
-                "id": "arch-gen",
-                "type": "architecture",
-                "title": "System Architecture",
-                "content": {
-                    "mermaid": "graph TD;\\nClient-->API;"
-                }
+            } catch (e) {
+                this.logger.error(`Exception fetching calendar for user ${userId}`, e);
             }
         }
-        Ensure the 'mermaid' field contains valid Mermaid.js graph syntax (e.g. graph TD or sequenceDiagram).`;
 
-        try {
-            const completion = await this.openai.chat.completions.create({
-                model: "gpt-4o",
-                messages: [
-                    { role: "system", content: "You are a Senior System Architect. Return valid JSON." },
-                    { role: "user", content: prompt }
-                ],
-                response_format: { type: "json_object" }
-            });
+        // --- Slack ---
+        if ((topic === 'slack' || topic === 'general') && connectedProviders.includes('slack')) {
+            try {
+                this.logger.log('Fetching Slack data...');
+                const token = await this.integrationsService.getDecryptedToken(userId, 'slack');
+                if (token && token.access_token) {
+                    const slackProvider = this.integrationsService.getProvider('slack') as any;
 
-            const content = completion.choices[0].message.content || "{}";
-            const response = JSON.parse(content);
-            if (response.artifact) response.artifact.id = `arch-${Date.now()}`;
-            return response;
-        } catch (e: any) {
-            console.error("Arch Gen Error", e);
-            return { title: "Error", blocks: [{ type: "callout", tone: "danger", title: "Generation Failed", body: e.message }] };
+                    // Fetch only channels the user is a member of
+                    const channelsRes = await fetch('https://slack.com/api/users.conversations?types=public_channel,private_channel&exclude_archived=true&limit=10', {
+                        headers: { Authorization: `Bearer ${token.access_token}` }
+                    });
+                    const channelsData = await channelsRes.json();
+
+                    if (channelsData.ok && channelsData.channels) {
+                        const msgs = [];
+                        for (const channel of channelsData.channels.slice(0, 3)) {
+                            const history = await slackProvider.getHistory(token.access_token, channel.id, 3);
+                            if (history.length > 0) {
+                                msgs.push(...history.map((m: any) => ({
+                                    channel: `#${channel.name}`,
+                                    user: m.user,
+                                    text: m.text,
+                                    time: new Date(parseFloat(m.ts) * 1000).toISOString()
+                                })));
+                            }
+                        }
+                        if (msgs.length > 0) {
+                            integrationData.slack = { recent_messages: msgs };
+                            connectedIntegrationsStr.push('Slack');
+                            this.logger.log(`Found ${msgs.length} Slack messages`);
+                        } else {
+                            this.logger.log('Slack connected but no messages found in recent channels');
+                            // Still mark as connected even if no messages
+                            connectedIntegrationsStr.push('Slack');
+                        }
+                    } else {
+                        this.logger.error(`Slack API Error: ${JSON.stringify(channelsData)}`);
+                        // If it's a rate limit, still mark as connected
+                        if (channelsData.error === 'rate_limited') {
+                            this.logger.warn('Slack rate limited, marking as connected anyway');
+                            connectedIntegrationsStr.push('Slack');
+                        }
+                    }
+                } else {
+                    this.logger.warn('Slack token not found or missing access_token');
+                }
+            } catch (e) {
+                this.logger.error(`Exception fetching slack for user ${userId}`, e);
+                // Still mark as connected if we have the provider
+                connectedIntegrationsStr.push('Slack');
+            }
         }
+
+        // --- GitHub ---
+        if ((topic === 'github' || topic === 'general') && connectedProviders.includes('github')) {
+            try {
+                this.logger.log('Fetching GitHub data...');
+                const token = await this.integrationsService.getDecryptedToken(userId, 'github');
+                if (token && token.access_token) {
+                    this.logger.log('GitHub token found, making API calls...');
+
+                    // Fetch assigned issues
+                    const issuesRes = await fetch('https://api.github.com/issues?filter=assigned&state=open&per_page=5', {
+                        headers: { Authorization: `Bearer ${token.access_token}`, Accept: 'application/vnd.github.v3+json' }
+                    });
+
+                    // Fetch recent events (pushes, PRs, etc.)
+                    const eventsRes = await fetch('https://api.github.com/users/user/events?per_page=10', {
+                        headers: { Authorization: `Bearer ${token.access_token}`, Accept: 'application/vnd.github.v3+json' }
+                    });
+
+                    // Fetch Open PRs (authored by user OR requesting review)
+                    const prsRes = await fetch(`https://api.github.com/search/issues?q=is:pr+state:open+archived:false+(author:@me+OR+user-review-requested:@me)&sort=updated&order=desc&per_page=5`, {
+                        headers: { Authorization: `Bearer ${token.access_token}`, Accept: 'application/vnd.github.v3+json' }
+                    });
+
+                    // Fetch User Repositories
+                    const reposRes = await fetch('https://api.github.com/user/repos?sort=updated&per_page=10&type=owner', {
+                        headers: { Authorization: `Bearer ${token.access_token}`, Accept: 'application/vnd.github.v3+json' }
+                    });
+
+                    const githubData: any = {
+                        assigned_issues: [],
+                        recent_pushes: [],
+                        open_prs: [],
+                        repositories: [],
+                        search_results: {}
+                    };
+
+                    // --- INTELLIGENT SEARCH ---
+                    // Attempt to find relevant items based on the user's query keywords
+                    try {
+                        // Simple keyword extraction: remove common stop words
+                        const stopWords = ['show', 'me', 'my', 'the', 'a', 'an', 'in', 'on', 'at', 'for', 'to', 'of', 'github', 'list', 'what', 'where', 'when', 'who', 'how', 'is', 'are'];
+                        const keywords = query.split(' ')
+                            .map(w => w.toLowerCase().replace(/[^a-z0-9]/g, ''))
+                            .filter(w => w.length > 2 && !stopWords.includes(w))
+                            .join(' ');
+
+                        if (keywords.length > 0) {
+                            this.logger.log(`Performing GitHub search for keywords: "${keywords}"`);
+
+                            // 1. Search Issues/PRs involving the user
+                            const searchIssuesRes = await fetch(`https://api.github.com/search/issues?q=${encodeURIComponent(keywords)}+involves:@me&per_page=3`, {
+                                headers: { Authorization: `Bearer ${token.access_token}`, Accept: 'application/vnd.github.v3+json' }
+                            });
+
+                            // 2. Search Repositories matching keywords
+                            const searchReposRes = await fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(keywords)}+user:@me&per_page=3`, {
+                                headers: { Authorization: `Bearer ${token.access_token}`, Accept: 'application/vnd.github.v3+json' }
+                            });
+
+                            if (searchIssuesRes.ok) {
+                                const issueResults = await searchIssuesRes.json();
+                                githubData.search_results.issues = issueResults.items?.map((i: any) => ({
+                                    title: i.title,
+                                    url: i.html_url,
+                                    state: i.state,
+                                    repo: i.repository_url?.split('/').slice(-2).join('/')
+                                })) || [];
+                            }
+
+                            if (searchReposRes.ok) {
+                                const repoResults = await searchReposRes.json();
+                                githubData.search_results.repos = repoResults.items?.map((r: any) => ({
+                                    name: r.full_name,
+                                    url: r.html_url,
+                                    description: r.description
+                                })) || [];
+                            }
+                        }
+                    } catch (searchErr) {
+                        this.logger.warn(`GitHub search failed: ${searchErr.message}`);
+                    }
+
+                    if (issuesRes.ok) {
+                        const issues = await issuesRes.json();
+                        this.logger.log(`GitHub issues response: ${issues.length} issues found`);
+                        if (issues.length > 0) {
+                            githubData.assigned_issues = issues.map((i: any) => ({
+                                title: i.title,
+                                number: i.number,
+                                repo: i.repository?.full_name || 'unknown',
+                                url: i.html_url,
+                                state: i.state,
+                                created_at: i.created_at
+                            }));
+                        }
+                    } else {
+                        const errText = await issuesRes.text();
+                        this.logger.error(`GitHub Issues API Error: ${issuesRes.status} ${errText}`);
+                    }
+
+                    if (eventsRes.ok) {
+                        const events = await eventsRes.json();
+                        this.logger.log(`GitHub events response: ${events.length} events found`);
+                        if (events && events.length > 0) {
+                            // Filter for push events
+                            const pushEvents = events.filter((e: any) => e.type === 'PushEvent');
+                            if (pushEvents.length > 0) {
+                                githubData.recent_pushes = pushEvents.slice(0, 5).map((e: any) => ({
+                                    repo: e.repo.name,
+                                    commits: e.payload.commits?.length || 0,
+                                    time: e.created_at,
+                                    branch: e.payload.ref
+                                }));
+                            }
+                        }
+                    } else {
+                        const errText = await eventsRes.text();
+                        this.logger.error(`GitHub Events API Error: ${eventsRes.status} ${errText}`);
+                    }
+
+                    if (prsRes.ok) {
+                        const prsData = await prsRes.json();
+                        if (prsData.items && prsData.items.length > 0) {
+                            githubData.open_prs = prsData.items.map((pr: any) => ({
+                                title: pr.title,
+                                number: pr.number,
+                                repo: pr.repository_url?.split('/').slice(-2).join('/') || 'unknown',
+                                url: pr.html_url,
+                                created_at: pr.created_at
+                            }));
+                            this.logger.log(`Found ${prsData.items.length} open PRs`);
+                        }
+                    } else {
+                        const errText = await prsRes.text();
+                        this.logger.error(`GitHub PR Search API Error: ${prsRes.status} ${errText}`);
+                    }
+
+                    if (reposRes.ok) {
+                        const repos = await reposRes.json();
+                        if (repos && repos.length > 0) {
+                            githubData.repositories = repos.map((r: any) => ({
+                                name: r.name,
+                                full_name: r.full_name,
+                                private: r.private,
+                                html_url: r.html_url,
+                                description: r.description,
+                                updated_at: r.updated_at
+                            }));
+                            this.logger.log(`Found ${repos.length} user repositories`);
+                        }
+                    } else {
+                        const errText = await reposRes.text();
+                        this.logger.error(`GitHub Repos API Error: ${reposRes.status} ${errText}`);
+                    }
+
+                    // Always populate integration data if we successfully connected (even if empty)
+                    integrationData.github = githubData;
+                    connectedIntegrationsStr.push('GitHub');
+                    this.logger.log(`GitHub data fetched (Repos: ${githubData.repositories.length}, Issues: ${githubData.assigned_issues.length}, Pushes: ${githubData.recent_pushes.length}, PRs: ${githubData.open_prs.length})`);
+                } else {
+                    this.logger.warn('GitHub token not found or missing access_token');
+                }
+            } catch (e) {
+                this.logger.error(`Exception fetching github for user ${userId}`, e);
+                // Still mark as connected if we have the provider
+                connectedIntegrationsStr.push('GitHub');
+            }
+        }
+
+        // --- Gmail ---
+        if ((topic === 'email' || topic === 'general') && connectedProviders.includes('gmail')) {
+            try {
+                this.logger.log('Fetching Gmail data...');
+                const token = await this.integrationsService.getDecryptedToken(userId, 'gmail');
+                if (token && token.access_token) {
+                    // Fetch recent unread emails
+                    const messagesRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread&maxResults=5', {
+                        headers: { Authorization: `Bearer ${token.access_token}` }
+                    });
+
+                    if (messagesRes.ok) {
+                        const data = await messagesRes.json();
+                        if (data.messages && data.messages.length > 0) {
+                            // Fetch full message details
+                            const emailDetails = await Promise.all(
+                                data.messages.slice(0, 5).map(async (msg: any) => {
+                                    const detailRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}`, {
+                                        headers: { Authorization: `Bearer ${token.access_token}` }
+                                    });
+                                    if (detailRes.ok) {
+                                        const detail = await detailRes.json();
+                                        const headers = detail.payload.headers;
+                                        return {
+                                            id: detail.id,
+                                            subject: headers.find((h: any) => h.name === 'Subject')?.value || 'No Subject',
+                                            from: headers.find((h: any) => h.name === 'From')?.value || 'Unknown',
+                                            date: headers.find((h: any) => h.name === 'Date')?.value,
+                                            snippet: detail.snippet
+                                        };
+                                    }
+                                    return null;
+                                })
+                            );
+
+                            const validEmails = emailDetails.filter(Boolean);
+                            if (validEmails.length > 0) {
+                                integrationData.gmail = { unread_emails: validEmails };
+                                connectedIntegrationsStr.push('Gmail');
+                                this.logger.log(`Found ${validEmails.length} unread emails`);
+                            }
+                        }
+                    } else {
+                        const errText = await messagesRes.text();
+                        this.logger.error(`Gmail API Error: ${messagesRes.status} ${errText}`);
+                    }
+                }
+            } catch (e) {
+                this.logger.error(`Exception fetching gmail for user ${userId}`, e);
+            }
+        }
+
+        // --- Fathom ---
+        if ((topic === 'transcript' || topic === 'general') && connectedProviders.includes('fathom')) {
+            try {
+                this.logger.log('Fetching Fathom data...');
+                const token = await this.integrationsService.getDecryptedToken(userId, 'fathom');
+                if (token && token.access_token) {
+                    // Fetch recent calls/transcripts
+                    const callsRes = await fetch('https://api.fathom.video/v1/calls?limit=5', {
+                        headers: {
+                            Authorization: `Bearer ${token.access_token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (callsRes.ok) {
+                        const calls = await callsRes.json();
+                        if (calls && calls.length > 0) {
+                            integrationData.fathom = {
+                                recent_calls: calls.map((call: any) => ({
+                                    id: call.id,
+                                    title: call.title,
+                                    start_time: call.start_time,
+                                    duration: call.duration,
+                                    summary: call.summary,
+                                    action_items: call.action_items
+                                }))
+                            };
+                            connectedIntegrationsStr.push('Fathom');
+                            this.logger.log(`Found ${calls.length} Fathom recordings`);
+                        }
+                    } else {
+                        const errText = await callsRes.text();
+                        this.logger.error(`Fathom API Error: ${callsRes.status} ${errText}`);
+                    }
+                }
+            } catch (e) {
+                this.logger.error(`Exception fetching fathom for user ${userId}`, e);
+            }
+        }
+
+        return {
+            userContext: {
+                timezone: 'America/New_York',
+                connected_integrations: connectedIntegrationsStr,
+                topic_detected: topic
+            },
+            integrationData
+        };
+    }
+
+    private detectTopic(query: string): string {
+        const q = query.toLowerCase();
+        if (q.includes('meeting') || q.includes('calendar') || q.includes('schedule') || q.includes('appointment')) return 'calendar';
+        if (q.includes('slack') || q.includes('message') || q.includes('chat') || q.includes('dm') || q.includes('channel')) return 'slack';
+        if (q.includes('github') || q.includes('pr') || q.includes('issue') || q.includes('code') || q.includes('repo') || q.includes('commit')) return 'github';
+        if (q.includes('email') || q.includes('gmail') || q.includes('inbox') || q.includes('unread')) return 'email';
+        if (q.includes('transcript') || q.includes('recording') || q.includes('fathom') || q.includes('call summary')) return 'transcript';
+        return 'general';
     }
 }

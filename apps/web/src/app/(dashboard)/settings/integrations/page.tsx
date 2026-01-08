@@ -36,13 +36,7 @@ const PROVIDERS = [
     domain: 'github.com',
     logoUrl: 'https://cdn.worldvectorlogo.com/logos/github-icon-1.svg'
   },
-  {
-    id: 'google_chat',
-    name: 'Google Chat',
-    description: 'Team discovery stub.',
-    domain: 'chat.google.com',
-    logoUrl: 'https://fonts.gstatic.com/s/i/productlogos/chat/v6/web-64dp/logo_chat_color_2x_web_64dp.png'
-  },
+
   {
     id: 'google_drive',
     name: 'Google Drive',
@@ -78,13 +72,7 @@ const PROVIDERS = [
     domain: 'meet.google.com',
     logoUrl: 'https://fonts.gstatic.com/s/i/productlogos/meet_2020q4/v1/web-64dp/logo_meet_2020q4_color_2x_web_64dp.png'
   },
-  {
-    id: 'microsoft_teams',
-    name: 'Microsoft Teams',
-    description: 'Chat & Meetings.',
-    domain: 'teams.microsoft.com',
-    logoUrl: 'https://cdn.worldvectorlogo.com/logos/microsoft-teams-1.svg'
-  },
+
   {
     id: 'fathom',
     name: 'Fathom',
@@ -128,7 +116,7 @@ export default function IntegrationsPage() {
   }, []);
 
   const handleConnect = async (provider: string) => {
-    const stubs = ['google_chat', 'notion', 'microsoft_teams', 'fathom'];
+    const stubs: string[] = [];
     if (stubs.includes(provider)) {
       const name = PROVIDERS.find(p => p.id === provider)?.name || provider;
       alert(`${name} stub implemented. Assume connected for demo.`);

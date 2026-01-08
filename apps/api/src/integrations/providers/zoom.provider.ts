@@ -82,39 +82,87 @@ export class ZoomProvider implements IProvider {
                 Authorization: `Bearer ${tokens.access_token}`,
             };
 
-            // Get user info
-            const userResponse = await axios.get('https://api.zoom.us/v2/users/me', { headers });
-            const userEmail = userResponse.data.email;
-
-            // Get meetings (upcoming and recent)
+            // 1. Get Scheduled Meetings (Upcoming)
             const meetingsResponse = await axios.get('https://api.zoom.us/v2/users/me/meetings', {
                 headers,
+                params: { type: 'scheduled', page_size: 50 },
+            });
+            const scheduled = (meetingsResponse.data.meetings || []).map((m: any) => ({
+                id: m.id.toString(),
+                title: m.topic,
+                startTime: new Date(m.start_time),
+                endTime: new Date(new Date(m.start_time).getTime() + m.duration * 60000),
+                summary: m.agenda,
+                recordingUrl: m.join_url,
+                videoProvider: 'zoom'
+            }));
+
+
+            // 2. Get Recordings (Past with potential transcripts)
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+            const recordingsResponse = await axios.get('https://api.zoom.us/v2/users/me/recordings', {
+                headers,
                 params: {
-                    type: 'scheduled',
-                    page_size: 100,
-                },
+                    from: thirtyDaysAgo.toISOString().split('T')[0],
+                    to: new Date().toISOString().split('T')[0],
+                }
             });
 
-            const meetings = meetingsResponse.data.meetings || [];
+            const recordings = recordingsResponse.data.meetings || [];
+            const processedRecordings = await Promise.all(recordings.map(async (rec: any) => {
+                let transcript = null;
 
-            // Transform meetings
-            const transformedMeetings = meetings.map((meeting: any) => ({
-                id: meeting.id.toString(),
-                title: meeting.topic,
-                description: meeting.agenda || '',
-                startTime: meeting.start_time,
-                duration: meeting.duration,
-                joinUrl: meeting.join_url,
-                meetingType: meeting.type === 2 ? 'scheduled' : meeting.type === 3 ? 'recurring' : 'instant',
-                status: meeting.status,
-                timezone: meeting.timezone,
+                // Find transcript file
+                const validFiles = rec.recording_files || [];
+                const transcriptFile = validFiles.find((f: any) => f.file_type === 'TRANSCRIPT');
+
+                if (transcriptFile && transcriptFile.download_url) {
+                    try {
+                        // Fetch the actual VTT/Text content
+                        // Zoom requires access_token as a query param for file downloads
+                        const downloadUrl = `${transcriptFile.download_url}?access_token=${tokens.access_token}`;
+                        const dlRes = await axios.get(downloadUrl);
+
+                        let originalTranscript = dlRes.data;
+
+                        // Simple VTT cleanup (remove timestamps and header)
+                        // This converts "WEBVTT\n\n1\n00:00:01.000 --> 00:00:04.000\nHello world" to "Hello world"
+                        if (typeof originalTranscript === 'string' && originalTranscript.includes('WEBVTT')) {
+                            transcript = originalTranscript
+                                .replace(/WEBVTT\s+/, '')
+                                .replace(/(\d{2}:)?\d{2}:\d{2}\.\d{3}\s+-->\s+(\d{2}:)?\d{2}:\d{2}\.\d{3}.*?\n/g, '') // Remove timestamps
+                                .replace(/^\d+\s+$/gm, '') // Remove sequence numbers
+                                .replace(/\r?\n\r?\n/g, '\n') // Remove extra newlines
+                                .trim();
+                        } else {
+                            transcript = originalTranscript;
+                        }
+
+                        console.log(`[Zoom] Downloaded and processed transcript for ${rec.id}. Length: ${transcript?.length}`);
+
+                    } catch (e) {
+                        console.warn(`[Zoom] Failed to download transcript for ${rec.id}`, e.message);
+                    }
+                }
+
+                return {
+                    id: rec.id.toString(),
+                    title: rec.topic,
+                    startTime: new Date(rec.start_time),
+                    endTime: new Date(new Date(rec.start_time).getTime() + rec.duration * 60000),
+                    summary: 'Zoom Cloud Recording',
+                    transcript: transcript || undefined, // undefined to ensure clean DB insert if null
+                    recordingUrl: rec.share_url,
+                    videoProvider: 'zoom'
+                };
             }));
 
             return {
-                meetings: transformedMeetings,
+                meetings: [...scheduled, ...processedRecordings],
                 customData: {
-                    totalMeetings: meetings.length,
-                    userEmail,
+                    totalMeetings: scheduled.length + processedRecordings.length
                 },
             };
         } catch (error) {

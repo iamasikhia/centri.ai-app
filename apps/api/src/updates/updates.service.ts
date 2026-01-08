@@ -130,13 +130,33 @@ export class UpdatesService {
         return this.prisma.updateItem.update({ where: { id }, data: { isDismissed: true } });
     }
 
+    async getNewsletters(userId: string) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        return this.prisma.updateItem.findMany({
+            where: {
+                userId,
+                type: 'newsletter',
+                isDismissed: false,
+                occurredAt: {
+                    gte: today
+                }
+            },
+            orderBy: { occurredAt: 'desc' },
+            take: 50
+        });
+    }
+
     // --- COLLECTORS ---
 
     private async collectGmail(userId: string, token: string): Promise<any[]> {
         const items = [];
         try {
+            // Broaden search to catch newsletters (Updates/Promotions often hold them)
+            // Fetch last 7 days to cover weekly digests
             const listRes = await axios.get('https://gmail.googleapis.com/gmail/v1/users/me/messages', {
-                params: { q: 'is:unread newer_than:3d -category:promotions -category:social', maxResults: 20 },
+                params: { q: 'newer_than:7d', maxResults: 30 },
                 headers: { Authorization: `Bearer ${token}` }
             });
 
@@ -152,38 +172,71 @@ export class UpdatesService {
                         const subject = headers.find((h: any) => h.name === 'Subject')?.value || 'No Subject';
                         const from = headers.find((h: any) => h.name === 'From')?.value || '';
 
-                        // Smart Filtering: Detect Newsletters/Automated
-                        const isNewsletter = headers.some((h: any) => h.name === 'List-Unsubscribe');
-                        const isNoReply = from.toLowerCase().includes('no-reply') || from.toLowerCase().includes('noreply');
-
-                        // Skip if it is a newsletter unless it has urgent keywords
+                        // --- NEWSLETTER DETECTION ---
+                        const listUnsubscribe = headers.find((h: any) => h.name === 'List-Unsubscribe');
                         const lowerSub = subject.toLowerCase();
-                        const isUrgent = lowerSub.match(/urgent|asap|immediate|action required|important|deadline/);
+                        const lowerFrom = from.toLowerCase();
 
-                        if ((isNewsletter || isNoReply) && !isUrgent) {
-                            return; // Skip non-necessary
-                        }
+                        // Heuristic Score
+                        let isNewsletter = false;
+                        if (listUnsubscribe) isNewsletter = true;
+                        if (lowerSub.match(/newsletter|digest|weekly|roundup|edition|update|launch|trends/)) isNewsletter = true;
+                        if (lowerFrom.includes('substack') || lowerFrom.includes('linkedin') || lowerFrom.includes('news')) isNewsletter = true;
 
                         const snippet = data.snippet;
                         const date = new Date(parseInt(data.internalDate));
 
-                        // Severity Logic
-                        let severity = 'info';
-                        if (isUrgent) severity = 'urgent';
-                        else if (lowerSub.match(/review|approve|contract|invoice|meeting|schedule/)) severity = 'important';
+                        if (isNewsletter) {
+                            // --- NEWSLETTER ---
+                            items.push({
+                                userId,
+                                source: 'gmail',
+                                type: 'newsletter',
+                                severity: 'info',
+                                title: subject,
+                                body: this.generateSummary(snippet), // AI Summary Stub
+                                occurredAt: date,
+                                externalId: msg.id,
+                                url: `https://mail.google.com/mail/u/0/#inbox/${msg.id}`,
+                                metadata: {
+                                    from,
+                                    senderName: from.split('<')[0].replace(/"/g, '').trim(),
+                                    originalSnippet: snippet
+                                }
+                            });
+                        } else {
+                            // --- REGULAR UPDATE (Existing Logic) ---
+                            // Only unread, urgent, or specific categories
+                            const labels = data.labelIds || [];
+                            const isUnread = labels.includes('UNREAD');
+                            // Skip promotions/social for regular feed if not newsletter
+                            // But our query included them, so we must filter them out manually for "regular updates"
+                            // Actually, let's keep the user's focus clean. 
 
-                        items.push({
-                            userId,
-                            source: 'gmail',
-                            type: 'email',
-                            severity,
-                            title: subject,
-                            body: snippet,
-                            occurredAt: date,
-                            externalId: msg.id,
-                            url: `https://mail.google.com/mail/u/0/#inbox/${msg.id}`,
-                            metadata: { labels: data.labelIds, from }
-                        });
+                            const isUrgent = lowerSub.match(/urgent|asap|immediate|action required|important|deadline/);
+                            const isNoReply = lowerFrom.includes('no-reply') || lowerFrom.includes('noreply');
+
+                            // Only keep if Unread AND (Urgent OR Important OR Not No-Reply)
+                            // This reduces noise from the broader query
+                            if (isUnread && (isUrgent || !isNoReply)) {
+                                let severity = 'info';
+                                if (isUrgent) severity = 'urgent';
+                                else if (lowerSub.match(/review|approve|contract|invoice|meeting|schedule/)) severity = 'important';
+
+                                items.push({
+                                    userId,
+                                    source: 'gmail',
+                                    type: 'email',
+                                    severity,
+                                    title: subject,
+                                    body: snippet,
+                                    occurredAt: date,
+                                    externalId: msg.id,
+                                    url: `https://mail.google.com/mail/u/0/#inbox/${msg.id}`,
+                                    metadata: { labels: data.labelIds, from }
+                                });
+                            }
+                        }
                     } catch (e) { }
                 }));
             }
@@ -191,6 +244,20 @@ export class UpdatesService {
             console.error('Gmail collect error', e.message);
         }
         return items;
+    }
+
+    private generateSummary(text: string): string {
+        // Pseudo-AI summarization
+        // In real world, send to LLM. Here, we extract the first meaningful sentence or clean up the snippet.
+        // Remove common newsletter clutter
+        let summary = text
+            .replace(/View in browser|Unsubscribe|Click here|trouble viewing/gi, '')
+            .trim();
+
+        if (summary.length > 150) {
+            summary = summary.substring(0, 147) + '...';
+        }
+        return summary;
     }
 
     private async collectGitHub(userId: string, token: string): Promise<any[]> {

@@ -6,7 +6,9 @@ import { Video, Mic, Upload, Calendar, ChevronRight, CheckCircle2, Circle, Clock
 
 interface MeetingsListProps {
     meetings: Meeting[];
+    isCalendarConnected?: boolean;
 }
+
 
 function StatusBadge({ status }: { status: MeetingStatus }) {
     if (status === 'processed') {
@@ -28,20 +30,47 @@ function SourceIcon({ source }: { source: string }) {
     }
 }
 
-export function MeetingsList({ meetings }: MeetingsListProps) {
+
+export function MeetingsList({ meetings, isCalendarConnected = false }: MeetingsListProps) {
     if (meetings.length === 0) {
+        if (!isCalendarConnected) {
+            return (
+                <div className="flex flex-col items-center justify-center py-20 bg-muted/5 border-2 border-dashed rounded-xl">
+                    <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                        <Mic className="w-8 h-8 text-muted-foreground/50" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">Connect your calendar</h3>
+                    <p className="text-muted-foreground text-center max-w-sm mb-6">
+                        Connect your calendar to automatically sync and analyze your meetings.
+                    </p>
+                    <Link href="/settings/integrations">
+                        <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
+                            Connect Calendar
+                        </button>
+                    </Link>
+                </div>
+            );
+        }
+
+        // Connected but no meetings
         return (
             <div className="flex flex-col items-center justify-center py-20 bg-muted/5 border-2 border-dashed rounded-xl">
-                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-                    <Mic className="w-8 h-8 text-muted-foreground/50" />
+                <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mb-4">
+                    <CheckCircle2 className="w-8 h-8 text-green-600" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">No meetings yet</h3>
                 <p className="text-muted-foreground text-center max-w-sm mb-6">
-                    Connect your calendar or upload a recording to get AI-powered briefings, action items, and decisions.
+                    Your calendar is connected, but no meetings were found for this period.
+                    <br />
+                    Try syncing manually or upload a recording.
                 </p>
-                <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
-                    Connect Calendar
-                </button>
+                <div className="flex gap-3">
+                    {/* Sync button is in header, maybe guide user there or just show upload */}
+                    {/* We can re-use the upload trigger if we pass it down, but keeping it simple for now */}
+                    <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+                        Tip: Click "Sync Transcripts" in top right
+                    </span>
+                </div>
             </div>
         );
     }

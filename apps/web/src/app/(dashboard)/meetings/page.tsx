@@ -1,13 +1,14 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { MOCK_MEETINGS } from '@/lib/mock-meetings';
 import { MeetingsList } from '@/components/meetings/meetings-list';
 import { TranscriptUploadModal } from '@/components/meetings/transcript-upload-modal';
 import { TranscriptImportModal } from '@/components/meetings/transcript-import-modal';
 import { Meeting, MeetingStatus } from '@/types/meeting';
-import { Mic, Search, Link } from 'lucide-react';
+import { Mic, Search, RefreshCw } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export default function MeetingsPage() {
     const [filter, setFilter] = useState<'all' | MeetingStatus>('all');
@@ -15,30 +16,89 @@ export default function MeetingsPage() {
     const [isUploadOpen, setIsUploadOpen] = useState(false);
     const [isImportOpen, setIsImportOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [isSyncing, setIsSyncing] = useState(false);
+
+
+    const [calendarState, setCalendarState] = useState<'loading' | 'connected' | 'disconnected' | 'error'>('loading');
+
+    const fetchStatus = useCallback(async () => {
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+        try {
+            const res = await fetch(`${API_URL}/integrations/status`, {
+                headers: { 'x-user-id': 'default-user-id' }
+            });
+            if (res.ok) {
+                const connections: any[] = await res.json();
+                const isConnected = connections.some(c => c.provider === 'google' || c.provider === 'google_calendar' || c.provider === 'google_meet' || c.provider === 'zoom');
+                setCalendarState(isConnected ? 'connected' : 'disconnected');
+            } else {
+                setCalendarState('error');
+            }
+        } catch (e) {
+            console.error("Failed to fetch integration status", e);
+            setCalendarState('error');
+        }
+    }, []);
+
+    const fetchMeetings = useCallback(async () => {
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+        try {
+            const res = await fetch(`${API_URL}/meetings`, {
+                headers: { 'x-user-id': 'default-user-id' }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const mapped: Meeting[] = data.map((m: any) => ({
+                    id: m.id,
+                    title: m.title,
+                    date: new Date(m.startTime),
+                    durationMinutes: Math.floor((new Date(m.endTime).getTime() - new Date(m.startTime).getTime()) / 60000),
+                    participants: m.attendeesJson ? JSON.parse(m.attendeesJson) : [],
+                    source: (m.videoProvider === 'fathom' ? 'Zoom' : m.videoProvider) as any || 'Integration', // Cast to any to bypass strict check for now
+                    type: 'Team Sync', // Default
+                    status: 'processed',
+                    summary: m.summary || 'No summary available.',
+                    keyTakeaways: m.highlightsJson ? JSON.parse(m.highlightsJson) : [],
+                    decisions: [],
+                    actionItems: m.actionItemsJson ? JSON.parse(m.actionItemsJson) : [],
+                    followUps: [],
+                    documents: [],
+                    transcript: m.transcript ? [{ speaker: 'Transcript', text: m.transcript, timestamp: 0 }] : []
+                }));
+                setMeetings(mapped);
+            } else {
+                setMeetings(MOCK_MEETINGS);
+            }
+        } catch (e) {
+            console.error("Failed to fetch meetings", e);
+            setMeetings(MOCK_MEETINGS);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
 
     // Initial Load
     useEffect(() => {
-        const saved = localStorage.getItem('centri_meetings');
-        if (saved) {
-            try {
-                // Merge saved with Mock (or just use saved if initialized)
-                // For this demo, we'll start with Mock + Saved New ones, 
-                // but simpler to just use Mock as base if storage is empty, else use storage.
-                // Re-hydrate dates because JSON strings
-                const parsed = JSON.parse(saved).map((m: any) => ({
-                    ...m,
-                    date: new Date(m.date),
-                    actionItems: m.actionItems.map((a: any) => ({ ...a, dueDate: a.dueDate ? new Date(a.dueDate) : undefined }))
-                }));
-                setMeetings(parsed);
-            } catch (e) {
-                setMeetings(MOCK_MEETINGS);
-            }
-        } else {
-            setMeetings(MOCK_MEETINGS);
+        fetchStatus().then(() => {
+            fetchMeetings();
+        });
+    }, [fetchStatus, fetchMeetings]);
+
+    const handleSync = async () => {
+        setIsSyncing(true);
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+        try {
+            await fetch(`${API_URL}/integrations/sync`, {
+                method: 'POST',
+                headers: { 'x-user-id': 'default-user-id' }
+            });
+            await fetchMeetings();
+        } catch (e) {
+            console.error("Sync failed", e);
+        } finally {
+            setIsSyncing(false);
         }
-        setIsLoading(false);
-    }, []);
+    };
 
     // Save on Change
     useEffect(() => {
@@ -96,11 +156,15 @@ export default function MeetingsPage() {
                 </div>
                 <div className="flex gap-3">
                     <button
-                        onClick={() => setIsImportOpen(true)} // Open Import Modal
-                        className="flex items-center gap-2 px-4 py-2.5 bg-background border text-foreground rounded-lg font-medium shadow-sm hover:bg-muted transition-all"
+                        onClick={handleSync}
+                        disabled={isSyncing}
+                        className={cn(
+                            "flex items-center gap-2 px-4 py-2.5 bg-background border text-foreground rounded-lg font-medium shadow-sm hover:bg-muted transition-all",
+                            isSyncing && "opacity-80 cursor-not-allowed"
+                        )}
                     >
-                        <Link className="w-4 h-4" />
-                        <span>Get from Integration</span>
+                        <RefreshCw className={cn("w-4 h-4", isSyncing && "animate-spin")} />
+                        <span>{isSyncing ? 'Syncing...' : 'Sync Transcripts'}</span>
                     </button>
                     <button
                         onClick={() => setIsUploadOpen(true)}
@@ -148,7 +212,7 @@ export default function MeetingsPage() {
                 </div>
             </div>
 
-            <MeetingsList meetings={filtered} />
+            <MeetingsList meetings={filtered} isCalendarConnected={calendarState === 'connected'} />
 
             <TranscriptUploadModal
                 open={isUploadOpen}

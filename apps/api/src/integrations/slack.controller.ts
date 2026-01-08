@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, Headers, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Headers, NotFoundException, BadRequestException } from '@nestjs/common';
 import { IntegrationsService } from './integrations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EncryptionService } from '../encryption/encryption.service';
@@ -143,44 +143,12 @@ export class SlackController {
                 frequency: body.frequency,
                 timeOfDay: body.timeOfDay,
                 targetType: body.targetType,
-                targetId: body.targetId
+                targetId: body.targetId,
+                selectedDays: body.selectedDays || []
             }
         });
     }
 
-    @Post('questions/:id')
-    async updateQuestion(@Headers('x-user-id') userId: string, @Param('id') id: string, @Body() body: any) {
-        // Verify ownership
-        const existing = await this.prisma.scheduledQuestion.findFirst({
-            where: { id, userId: userId || 'default-user-id' }
-        });
-
-        if (!existing) {
-            throw new NotFoundException('Question not found');
-        }
-
-        return this.prisma.scheduledQuestion.update({
-            where: { id },
-            data: {
-                title: body.title,
-                text: body.text,
-                frequency: body.frequency,
-                timeOfDay: body.timeOfDay,
-                targetType: body.targetType,
-                targetId: body.targetId
-            }
-        });
-    }
-
-    @Delete('questions/:id')
-    async deleteQuestion(@Headers('x-user-id') userId: string, @Param('id') id: string) {
-        return this.prisma.scheduledQuestion.deleteMany({
-            where: {
-                id: id,
-                userId: userId || 'default-user-id'
-            }
-        });
-    }
 
     @Post('questions/run')
     async runScheduledQuestions(@Headers('x-user-id') userId: string) {
@@ -217,6 +185,15 @@ export class SlackController {
                 continue;
             }
 
+            // Check Day of Week
+            if (q.selectedDays && q.selectedDays.length > 0) {
+                const currentDay = new Date().toLocaleDateString('en-US', { weekday: 'short' }); // "Mon", "Tue"
+                if (!q.selectedDays.includes(currentDay)) {
+                    console.log(`[Slack] Skipping question "${q.title}": Today (${currentDay}) is not in selected days (${q.selectedDays.join(', ')})`);
+                    continue;
+                }
+            }
+
             let success = false;
             // Send Message
             if (q.targetType === 'channel' && q.targetId) {
@@ -242,4 +219,87 @@ export class SlackController {
 
         return { sent: sentCount, results };
     }
+
+    @Post('questions/:id')
+    async updateQuestion(@Headers('x-user-id') userId: string, @Param('id') id: string, @Body() body: any) {
+
+        // Verify ownership
+        const existing = await this.prisma.scheduledQuestion.findFirst({
+            where: { id, userId: userId || 'default-user-id' }
+        });
+
+        if (!existing) {
+            throw new NotFoundException('Question not found');
+        }
+
+        return this.prisma.scheduledQuestion.update({
+            where: { id },
+            data: {
+                title: body.title,
+                text: body.text,
+                frequency: body.frequency,
+                timeOfDay: body.timeOfDay,
+                targetType: body.targetType,
+                targetId: body.targetId,
+                selectedDays: body.selectedDays || []
+            }
+        });
+    }
+
+    @Post('questions/:id/test')
+    async testQuestion(@Headers('x-user-id') userId: string, @Param('id') id: string) {
+        console.log(`[Slack] Testing question ${id}...`);
+        const uid = userId || 'default-user-id';
+
+        const question = await this.prisma.scheduledQuestion.findFirst({
+            where: { id, userId: uid }
+        });
+
+        if (!question) throw new NotFoundException('Question not found');
+
+        const integration = await this.prisma.integrations.findUnique({
+            where: { userId_provider: { userId: uid, provider: 'slack' } }
+        });
+
+        if (!integration) throw new NotFoundException('Slack not connected');
+
+        const tokens = JSON.parse(this.encryption.decrypt(integration.encryptedBlob));
+        const slackProvider = this.integrationsService.getProvider('slack') as any;
+
+        let success = false;
+        try {
+            if (question.targetType === 'channel' && question.targetId) {
+                console.log(`[Slack] Test sending "${question.title}" to ${question.targetId}`);
+                await slackProvider.postMessage(tokens.access_token, question.targetId, question.text);
+                success = true;
+            } else {
+                throw new Error('Unsupported target type for test');
+            }
+        } catch (e) {
+            throw new BadRequestException(`Slack Error: ${e.message}`);
+        }
+
+        if (success) {
+            // Optional: Update lastSentAt even for tests? Maybe yes, to reflect activity.
+            await this.prisma.scheduledQuestion.update({
+                where: { id: question.id },
+                data: { lastSentAt: new Date() }
+            });
+            return { status: 'success', message: 'Test message sent' };
+        } else {
+            throw new Error('Failed to send message to Slack');
+        }
+    }
+
+    @Delete('questions/:id')
+    async deleteQuestion(@Headers('x-user-id') userId: string, @Param('id') id: string) {
+        return this.prisma.scheduledQuestion.deleteMany({
+            where: {
+                id: id,
+                userId: userId || 'default-user-id'
+            }
+        });
+    }
+
+
 }

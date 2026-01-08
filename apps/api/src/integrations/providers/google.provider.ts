@@ -39,6 +39,24 @@ export class GoogleProvider implements IProvider {
     }
   }
 
+  async refreshTokens(refreshToken: string): Promise<any> {
+    const clientId = this.config.get('GOOGLE_CLIENT_ID');
+    const clientSecret = this.config.get('GOOGLE_CLIENT_SECRET');
+
+    try {
+      const response = await axios.post('https://oauth2.googleapis.com/token', {
+        refresh_token: refreshToken,
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: 'refresh_token',
+      });
+      return response.data;
+    } catch (error) {
+      console.error('[GoogleProvider] Token Refresh Failed:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
   async syncData(userId: string, tokens: any): Promise<SyncResult> {
     // 1. Fetch Meetings
     // 2. Fetch User Info (for team member discovery if applicable)

@@ -17,6 +17,30 @@ export class DashboardService {
         const today = new Date();
         const nextWeek = addDays(today, 7);
 
+        // Fetch Urgent Updates (from Slack, Transcripts/Meetings "google_calendar")
+        // We consider 'urgent' and 'important' items that are not dismissed as potential Risks or Attention items
+        const recentUpdates = await this.prisma.updateItem.findMany({
+            where: {
+                userId,
+                isDismissed: false,
+                severity: { in: ['urgent', 'important', 'high'] },
+                // Filter out raw calendar events from alerts unless they are flagged as important by another system
+                // The user explicitly requested "from call transcripts not event names", so we ignore 'google_calendar' source updates for now
+                source: { not: 'google_calendar' }
+            },
+            orderBy: { occurredAt: 'desc' },
+            take: 10
+        });
+
+        const updates = recentUpdates.map(u => ({
+            id: u.id,
+            text: u.title,
+            severity: u.severity === 'urgent' ? 'High' : 'Medium',
+            type: 'blocker', // Default type, logic can refine this based on content
+            source: u.source,
+            createdAt: u.createdAt.toISOString()
+        }));
+
         // --- GitHub Intelligence Integration ---
         let githubIntelligence = null;
         try {
@@ -81,7 +105,8 @@ export class DashboardService {
         });
 
         // Filter for relevant tasks (not old done tasks)
-        const activeTasks = tasksRaw.filter(t => t.status !== 'Done' || !isPast(addDays(new Date(t.updatedAt), 1)));
+        // Filter for relevant tasks: Active OR Done within the last 7 days
+        const activeTasks = tasksRaw.filter(t => t.status !== 'Done' || !isPast(addDays(new Date(t.updatedAt), 7)));
 
         const tasks = activeTasks.map(t => ({
             id: t.id,
@@ -105,6 +130,7 @@ export class DashboardService {
             people,
             tasks,
             meetings,
+            updates, // New Field
             githubIntelligence, // New Field
             // Keep legacy fields for safety if needed, but simplified
             focusTasks: [],

@@ -14,13 +14,24 @@ interface ScheduledQuestion {
     frequency: 'daily' | 'weekly' | 'once' | 'always_test';
     timeOfDay: string;
     lastSentAt: string | null;
-    createdAt: string;
+    selectedDays?: string[];
+    isActive: boolean;
 }
 
 interface Channel {
     id: string;
     name: string;
 }
+
+const DAYS = [
+    { id: 'Mon', label: 'M' },
+    { id: 'Tue', label: 'T' },
+    { id: 'Wed', label: 'W' },
+    { id: 'Thu', label: 'T' },
+    { id: 'Fri', label: 'F' },
+    { id: 'Sat', label: 'S' },
+    { id: 'Sun', label: 'S' },
+];
 
 export default function QuestionsPage() {
     const [questions, setQuestions] = useState<ScheduledQuestion[]>([]);
@@ -36,6 +47,7 @@ export default function QuestionsPage() {
     const [targetId, setTargetId] = useState('');
     const [frequency, setFrequency] = useState('daily');
     const [timeOfDay, setTimeOfDay] = useState('09:00');
+    const [selectedDays, setSelectedDays] = useState<string[]>([]);
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -88,18 +100,18 @@ export default function QuestionsPage() {
                     'x-user-id': 'default-user-id'
                 },
                 body: JSON.stringify({
-                    title, text, targetType, targetId, frequency, timeOfDay
+                    title, text, targetType, targetId, frequency, timeOfDay, selectedDays
                 })
             });
             if (res.ok) {
                 setIsCreating(false);
                 setEditingId(null);
-                setTitle(''); setText(''); setTargetId('');
+                setTitle(''); setText(''); setTargetId(''); setSelectedDays([]);
                 fetchData();
                 alert(editingId ? 'Question updated successfully!' : 'Question scheduled successfully!');
             } else {
                 const error = await res.text();
-                console.error('Submit failed:', error);
+                // console.error('Submit failed:', error);
                 alert(`Failed to ${editingId ? 'update' : 'create'} question: ${error}`);
             }
         } catch (e) {
@@ -112,10 +124,11 @@ export default function QuestionsPage() {
         setEditingId(question.id);
         setTitle(question.title);
         setText(question.text);
-        setTargetType(question.targetType);
+        setTargetType(question.targetType as any);
         setTargetId(question.targetId || '');
         setFrequency(question.frequency);
         setTimeOfDay(question.timeOfDay);
+        setSelectedDays(question.selectedDays || []);
         setIsCreating(true);
     };
 
@@ -125,6 +138,15 @@ export default function QuestionsPage() {
         setTitle('');
         setText('');
         setTargetId('');
+        setSelectedDays([]);
+    };
+
+    const toggleDay = (day: string) => {
+        if (selectedDays.includes(day)) {
+            setSelectedDays(selectedDays.filter(d => d !== day));
+        } else {
+            setSelectedDays([...selectedDays, day]);
+        }
     };
 
     const handleDelete = async (id: string) => {
@@ -154,16 +176,40 @@ export default function QuestionsPage() {
             });
             if (res.ok) {
                 const data = await res.json();
-                alert(`Run complete! Sent: ${data.sent} question(s)`);
+                if (data.sent === 0) {
+                    alert(`Run complete! Sent: 0 question(s). \n(Nothing was due to be sent based on current schedules. Use the blue 'Test' button on a question to force send it.)`);
+                } else {
+                    alert(`Run complete! Sent: ${data.sent} question(s)`);
+                }
                 fetchData();
             } else {
                 const error = await res.text();
-                console.error('Run failed:', error);
+                // console.error('Run failed:', error);
                 alert(`Failed to run check: ${error}`);
             }
         } catch (e) {
             console.error('Run error:', e);
             alert('Failed to run check. Make sure Slack is connected.');
+        }
+    };
+
+    const handleTestRun = async (id: string) => {
+        if (!confirm('This will send the question immediately, ignoring the schedule. Continue?')) return;
+        try {
+            const res = await fetch(`${API_URL}/slack/questions/${id}/test`, {
+                method: 'POST',
+                headers: { 'x-user-id': 'default-user-id' }
+            });
+            if (res.ok) {
+                alert('Test message sent successfully!');
+                fetchData();
+            } else {
+                const error = await res.text();
+                alert(`Failed to send test: ${error}`);
+            }
+        } catch (e) {
+            console.error('Test error:', e);
+            alert('Failed to send test.');
         }
     };
 
@@ -204,7 +250,7 @@ export default function QuestionsPage() {
                         <Play className="w-4 h-4" /> Run Check
                     </button>
                     <button
-                        onClick={() => setIsCreating(!isCreating)}
+                        onClick={() => { setIsCreating(!isCreating); setSelectedDays([]); }}
                         className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-colors"
                     >
                         <Plus className="w-4 h-4" /> New Question
@@ -235,13 +281,35 @@ export default function QuestionsPage() {
                                         className="w-full px-3 py-2 border rounded-md bg-card"
                                         value={frequency} onChange={e => setFrequency(e.target.value)}
                                     >
-                                        <option value="daily">Daily (Every Morning)</option>
+                                        <option value="daily">Daily</option>
                                         <option value="weekly">Weekly</option>
                                         <option value="once">Once</option>
                                         <option value="always_test">Always (Test Mode)</option>
                                     </select>
                                 </div>
                             </div>
+
+                            {(frequency === 'daily' || frequency === 'weekly') && (
+                                <div>
+                                    <label className="text-sm font-medium mb-1 block">Days Active</label>
+                                    <div className="flex gap-2">
+                                        {DAYS.map(day => (
+                                            <button
+                                                key={day.id}
+                                                type="button"
+                                                onClick={() => toggleDay(day.id)}
+                                                className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${selectedDays.includes(day.id)
+                                                    ? 'bg-primary text-primary-foreground'
+                                                    : 'bg-card border hover:bg-muted'
+                                                    }`}
+                                            >
+                                                {day.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mt-1">Leave empty to run every day.</p>
+                                </div>
+                            )}
 
                             <div>
                                 <label className="text-sm font-medium mb-1 block">Question Text</label>
@@ -313,6 +381,9 @@ export default function QuestionsPage() {
                                     <h3 className="font-semibold text-lg">{q.title}</h3>
                                     <div className="flex items-center gap-2">
                                         <span className="text-xs px-2 py-1 bg-muted rounded uppercase font-medium text-muted-foreground">{q.frequency}</span>
+                                        <button onClick={() => handleTestRun(q.id)} className="text-blue-500 hover:text-blue-600 p-1" title="Test Run Now (Force)">
+                                            <Play className="w-4 h-4" />
+                                        </button>
                                         <button onClick={() => handleEdit(q)} className="text-primary hover:text-primary/80 p-1" title="Edit">
                                             <Pencil className="w-4 h-4" />
                                         </button>
@@ -333,6 +404,12 @@ export default function QuestionsPage() {
                                         <Clock className="w-3 h-3" />
                                         <span>{q.timeOfDay}</span>
                                     </div>
+                                    {q.selectedDays && q.selectedDays.length > 0 && (
+                                        <div className="flex items-center gap-1">
+                                            <Clock className="w-3 h-3 text-primary" />
+                                            <span className="text-primary">{q.selectedDays.join(', ')}</span>
+                                        </div>
+                                    )}
                                     {q.lastSentAt && (
                                         <div className="text-xs text-success">
                                             Last sent: {new Date(q.lastSentAt).toLocaleDateString()}

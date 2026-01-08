@@ -24,6 +24,7 @@ model User {
   questions    ScheduledQuestion[]
   updates      UpdateItem[]
   opportunities Opportunity[]
+  conversations Conversation[]
 }
 
 model UpdateItem {
@@ -77,6 +78,15 @@ model Meeting {
   description      String?
   meetLink         String?
   htmlLink         String?
+  
+  summary          String?   @db.Text
+  transcript       String?   @db.Text
+  transcriptJson   String?   @db.Text
+  processingStatus String?   @default("new") // 'new', 'processing', 'processed', 'failed'
+  recordingUrl     String?
+  videoProvider    String?
+  highlightsJson   String?   @db.Text
+  actionItemsJson  String?   @db.Text
   
   calendarEventType       String?    // 'meeting'|'task'|'unknown'
   calendarEventConfidence Float?
@@ -142,6 +152,7 @@ model ScheduledQuestion {
   targetId      String?  // Channel ID to post to, or null for 'all team members' (DMs)
   frequency     String   // 'daily', 'weekly', 'once'
   timeOfDay     String   // "09:00"
+  selectedDays  String[] // Array of days e.g. ["Mon", "Fri"]
   isActive      Boolean  @default(true)
   lastSentAt    DateTime?
   createdAt     DateTime @default(now())
@@ -194,4 +205,30 @@ model Opportunity {
   updatedAt       DateTime @updatedAt
 
   user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String?  // Auto-generated from first message
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model ChatMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String   // 'user' | 'assistant' | 'system'
+  content        String   @db.Text
+  data           Json?    // For structured AI responses (citations, insights, actions, followUps)
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
 }

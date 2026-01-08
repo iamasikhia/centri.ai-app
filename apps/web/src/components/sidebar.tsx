@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { Home, Users, Settings, LogOut, MessageCircle, CalendarCheck, Bell, Mail, Zap, Wrench, CheckSquare, Briefcase, Mic, Rocket, Sparkles, BookOpen } from 'lucide-react';
+import { Home, Users, Settings, LogOut, MessageCircle, CalendarCheck, Bell, Mail, Zap, Wrench, CheckSquare, Briefcase, Mic, Rocket, Sparkles, BookOpen, Newspaper } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import { cn } from '@/lib/utils';
@@ -19,21 +19,22 @@ export function Sidebar() {
 
     const mainLinks = [
         { href: '/dashboard', label: 'Dashboard', icon: Home },
-        { href: '/updates', label: 'Updates', icon: Bell },
+        // { href: '/updates', label: 'Updates', icon: Bell },
+        // { href: '/newsletters', label: 'Newsletters', icon: Newspaper },
         { href: '/meetings', label: 'Meetings', icon: Mic },
         { href: '/chat', label: 'Chat', icon: MessageCircle },
         { href: '/codebase-overview', label: 'Codebase Intelligence', icon: BookOpen },
-        { href: '/todos', label: 'Todos', icon: CheckSquare },
+        // { href: '/todos', label: 'Todos', icon: CheckSquare },
         { href: '/questions', label: 'CheckIns', icon: CalendarCheck },
 
         { href: '/stakeholders', label: 'Stakeholders', icon: Briefcase },
-        { href: '/fundraising', label: 'Fundraising', icon: Rocket },
+        // { href: '/fundraising', label: 'Fundraising', icon: Rocket },
         { href: '/tools', label: 'PM Tools', icon: Wrench },
         { href: '/life-wrapped', label: 'Work Wrapped', icon: Sparkles },
-        { href: '/settings/integrations', label: 'Integrations', icon: Zap },
     ];
 
     const footerLinks = [
+        { href: '/settings/integrations', label: 'Integrations', icon: Zap },
         { href: '/settings', label: 'Settings', icon: Settings },
         { href: '/contact', label: 'Contact', icon: Mail },
     ];

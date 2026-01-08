@@ -39,11 +39,26 @@ export class IntegrationsController {
         // For this MVP, I will hardcode userId 'default-user-id' to keep it simple as requested "no user questions".
         const userId = 'default-user-id';
 
-        await this.integrationsService.handleCallback(provider, code, userId);
+        try {
+            console.log(`[${provider}] OAuth callback received`);
+            console.log(`[${provider}] Code:`, code?.substring(0, 20) + '...');
 
-        // Redirect back to frontend
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
-        res.redirect(`${frontendUrl}/settings/integrations`);
+            await this.integrationsService.handleCallback(provider, code, userId);
+
+            console.log(`[${provider}] OAuth callback successful!`);
+
+            // Redirect back to frontend
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
+            res.redirect(`${frontendUrl}/settings/integrations`);
+        } catch (error) {
+            console.error(`[${provider}] OAuth callback failed!`);
+            console.error(`[${provider}] Error:`, error.message);
+            console.error(`[${provider}] Stack:`, error.stack);
+
+            // Return error page or redirect with error
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
+            res.redirect(`${frontendUrl}/settings/integrations?error=${encodeURIComponent(error.message)}`);
+        }
     }
 
     @Post('sync')

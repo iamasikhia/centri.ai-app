@@ -16,29 +16,55 @@ export default function MeetingDetailPage({ params }: { params: { id: string } }
     const [meeting, setMeeting] = useState<Meeting | null | undefined>(undefined);
 
     useEffect(() => {
-        // Hydrate from storage or fallback to mock
-        const saved = localStorage.getItem('centri_meetings');
-        let allMeetings = MOCK_MEETINGS;
-
-        if (saved) {
+        const fetchMeeting = async () => {
+            const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
             try {
-                const parsed = JSON.parse(saved).map((m: any) => ({
-                    ...m,
-                    date: new Date(m.date),
-                    actionItems: m.actionItems.map((a: any) => ({ ...a, dueDate: a.dueDate ? new Date(a.dueDate) : undefined }))
-                }));
-                // If storage overrides everything, use parsed. 
-                // But usually we merged in the list page.
-                // For safety, let's search in parsed, if not found, search in MOCK (for fresh tabs).
-                // Actually list page initialized storage with MOCK if empty.
-                allMeetings = parsed;
-            } catch (e) {
-                console.error("Failed to parse meetings", e);
-            }
-        }
+                const res = await fetch(`${API_URL}/meetings/${params.id}`, {
+                    headers: { 'x-user-id': 'default-user-id' }
+                });
 
-        const found = allMeetings.find(m => m.id === params.id) || MOCK_MEETINGS.find(m => m.id === params.id);
-        setMeeting(found || null);
+                if (res.ok) {
+                    const m = await res.json();
+                    const mapped: Meeting = {
+                        id: m.id,
+                        title: m.title,
+                        date: new Date(m.startTime),
+                        durationMinutes: Math.floor((new Date(m.endTime).getTime() - new Date(m.startTime).getTime()) / 60000),
+                        participants: m.attendeesJson ? JSON.parse(m.attendeesJson) : [],
+                        source: (m.videoProvider === 'fathom' ? 'Zoom' : m.videoProvider) as any || 'Integration',
+                        type: 'Team Sync',
+                        status: (m.processingStatus as any) || 'processed',
+                        summary: m.summary || 'No summary available.',
+                        keyTakeaways: m.highlightsJson ? JSON.parse(m.highlightsJson) : [],
+                        decisions: [],
+                        actionItems: m.actionItemsJson ? JSON.parse(m.actionItemsJson) : [],
+                        followUps: [],
+                        documents: [],
+                        transcript: m.transcriptJson
+                            ? JSON.parse(m.transcriptJson).map((t: any) => ({
+                                speaker: t.speaker || 'Unknown',
+                                text: t.text,
+                                timestamp: t.timestamp || 0,
+                                isHighlighted: t.isHighlighted || false
+                            }))
+                            : (m.transcript ? [{ speaker: 'Transcript', text: m.transcript, timestamp: 0 }] : [])
+                    };
+                    setMeeting(mapped);
+                } else {
+                    // Fallback to mock if API fails/not found for demo
+                    console.warn(`Meeting ${params.id} not found on API, checking mocks...`);
+                    const found = MOCK_MEETINGS.find(m => m.id === params.id);
+                    setMeeting(found || null);
+                }
+            } catch (e) {
+                console.error("Failed to fetch meeting details", e);
+                // Fallback to mock
+                const found = MOCK_MEETINGS.find(m => m.id === params.id);
+                setMeeting(found || null);
+            }
+        };
+
+        fetchMeeting();
     }, [params.id]);
 
     if (meeting === undefined) {
@@ -115,6 +141,16 @@ export default function MeetingDetailPage({ params }: { params: { id: string } }
                     {meeting.status === 'processed' && (
                         <div className="px-2.5 py-1 bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 rounded-full text-xs font-semibold">
                             AI Processed
+                        </div>
+                    )}
+                    {meeting.status === 'processing' && (
+                        <div className="px-2.5 py-1 bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 rounded-full text-xs font-semibold animate-pulse">
+                            Processing Transcript...
+                        </div>
+                    )}
+                    {meeting.status === 'failed' && (
+                        <div className="px-2.5 py-1 bg-red-500/10 text-red-600 border border-red-500/20 rounded-full text-xs font-semibold">
+                            Processing Failed
                         </div>
                     )}
                 </div>

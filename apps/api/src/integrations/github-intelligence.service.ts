@@ -28,24 +28,35 @@ export class GithubIntelligenceService {
     }
 
     private generateWeeklyBrief(commits: any[], prs: any[], releases: any[]): string {
-        const mergedPRs = prs.filter((p: any) => p.merged);
+        const now = new Date();
+        const mergedLast7d = prs.filter((p: any) => p.merged && differenceInDays(now, parseISO(p.merged_at)) <= 7);
         const openPRs = prs.filter((p: any) => p.state === 'open');
-        const recentReleases = releases.filter((r: any) => differenceInDays(new Date(), parseISO(r.published_at)) < 7);
+        const recentReleases = releases.filter((r: any) => differenceInDays(now, parseISO(r.published_at)) < 7);
+        const uniqueRepos = new Set(commits.filter((c: any) => differenceInDays(now, parseISO(c.date)) <= 7).map((c: any) => c.repo)).size;
 
-        let brief = `This week, engineering merged ${mergedPRs.length} pull requests or "Engineering Changes" across ${new Set(commits.map((c: any) => c.repo)).size} repositories. `;
+        let brief = '';
 
-        if (recentReleases.length > 0) {
-            brief += `${recentReleases.length} "Product Updates Shipped" (releases) went live, including ${recentReleases[0].name || recentReleases[0].tag}. `;
+        // PRs
+        if (mergedLast7d.length > 0) {
+            brief += `This week, engineering merged ${mergedLast7d.length} pull requests across ${uniqueRepos} repositories. `;
         } else {
-            brief += "No production releases were shipped this week. ";
+            brief += `This week, no pull requests were merged. `;
         }
 
+        // Releases
+        if (recentReleases.length > 0) {
+            brief += `${recentReleases.length} release${recentReleases.length > 1 ? 's' : ''} went live, including ${recentReleases[0].name || recentReleases[0].tag}. `;
+        } else {
+            brief += "No production releases were shipped. ";
+        }
+
+        // Active Work
         if (openPRs.length > 0) {
-            brief += `${openPRs.length} items are currently in progress. `;
+            brief += `${openPRs.length} item${openPRs.length > 1 ? 's are' : ' is'} currently in progress. `;
         }
 
-        // Momentum heuristic
-        const commitsLast3Days = commits.filter((c: any) => differenceInDays(new Date(), parseISO(c.date)) <= 3).length;
+        // Momentum heuristic (Contextualize with total activity if weekly is low)
+        const commitsLast3Days = commits.filter((c: any) => differenceInDays(now, parseISO(c.date)) <= 3).length;
         if (commitsLast3Days > 10) {
             brief += "Development momentum is high.";
         } else if (commitsLast3Days > 0) {
@@ -59,24 +70,36 @@ export class GithubIntelligenceService {
 
     private calculateMetrics(commits: any[], prs: any[], releases: any[]) {
         // Current Period (Last 7 days)
-        const commitsLast7d = commits.filter((c: any) => differenceInDays(new Date(), parseISO(c.date)) <= 7).length;
-        const mergedLast7d = prs.filter((p: any) => p.merged && differenceInDays(new Date(), parseISO(p.merged_at)) <= 7).length;
-        const releasesLast7d = releases.filter((r: any) => differenceInDays(new Date(), parseISO(r.published_at)) <= 7).length;
+        const now = new Date();
+        const commitsLast7d = commits.filter((c: any) => differenceInDays(now, parseISO(c.date)) <= 7);
+
+        // Calculate unique days with commits (Active Dev Days)
+        const uniqueDaysWithCommits = new Set(
+            commitsLast7d.map((c: any) => parseISO(c.date).toDateString())
+        ).size;
+
+        const mergedLast7d = prs.filter((p: any) => p.merged && differenceInDays(now, parseISO(p.merged_at)) <= 7).length;
+        const releasesLast7d = releases.filter((r: any) => differenceInDays(now, parseISO(r.published_at)) <= 7).length;
 
         // Previous Period (7-14 days) - Heuristic from data (since we only fetch 14d)
         const commitsPrev7d = commits.filter((c: any) => {
-            const d = differenceInDays(new Date(), parseISO(c.date));
+            const d = differenceInDays(now, parseISO(c.date));
             return d > 7 && d <= 14;
-        }).length;
+        });
+
+        const uniqueDaysPrev = new Set(
+            commitsPrev7d.map((c: any) => parseISO(c.date).toDateString())
+        ).size;
 
         return [
             {
                 id: 'repo-updates',
-                title: 'Repository Updates',
-                value: commitsLast7d,
-                trendDirection: commitsLast7d >= commitsPrev7d ? 'up' : 'down',
-                trendLabel: commitsPrev7d ? `${Math.round(((commitsLast7d - commitsPrev7d) / commitsPrev7d) * 100)}%` : 'New',
-                description: 'Code commits to main branches.'
+                title: 'Active Dev Days',
+                value: uniqueDaysWithCommits,
+                trendDirection: uniqueDaysWithCommits >= uniqueDaysPrev ? 'up' : 'down',
+                trendLabel: uniqueDaysPrev ? `${Math.round(((uniqueDaysWithCommits - uniqueDaysPrev) / uniqueDaysPrev) * 100)}%` : 'New',
+                description: 'Days with code commits to main branches.',
+                subtext: `${commitsLast7d.length} total commits`
             },
             {
                 id: 'eng-changes',
