@@ -62,6 +62,8 @@ export class GoogleProvider implements IProvider {
     // 2. Fetch User Info (for team member discovery if applicable)
 
     const meetings = [];
+    const tasks = [];
+
     try {
       const start = new Date().toISOString();
       const end = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
@@ -71,35 +73,62 @@ export class GoogleProvider implements IProvider {
       });
 
       if (calRes.data.items) {
-        meetings.push(...calRes.data.items);
+        for (const item of calRes.data.items) {
+          const attendees = item.attendees || [];
+          const hasConference = !!item.conferenceData || !!item.hangoutLink;
+          const isSelf = item.organizer?.self || false;
+
+          // Classification Logic:
+          // Task if: (No attendees OR only self) AND (No conference link)
+          // Meeting if: (Attendees > 1) OR (Has conference link)
+
+          // Exception: If title contains "Meeting", "Sync", "Call", treat as Meeting even if solo (e.g. "Prep for meeting")
+          // Actually, "Prep" is a task. "Sync" with self is weird.
+          // Let's stick to the structural signals.
+
+          const isMeeting = (attendees.length > 1) || hasConference;
+
+          const commonFields = {
+            id: item.id,
+            calendarEventId: item.id,
+            title: item.summary || 'No Title',
+            startTime: new Date(item.start.dateTime || item.start.date),
+            endTime: new Date(item.end.dateTime || item.end.date),
+            description: item.description || null,
+            htmlLink: item.htmlLink || null,
+          };
+
+          if (isMeeting) {
+            // Determine duration
+            const durationMinutes = (commonFields.endTime.getTime() - commonFields.startTime.getTime()) / (1000 * 60);
+
+            meetings.push({
+              ...commonFields,
+              attendeesJson: JSON.stringify(attendees),
+              location: item.location || null,
+              meetLink: item.hangoutLink || null,
+              rawAttendeesCount: attendees.length,
+              hasConference: hasConference,
+              isSelfOrganized: isSelf,
+              durationMinutes: durationMinutes
+            });
+          } else {
+            // It's a Task
+            tasks.push({
+              ...commonFields,
+              status: 'pending', // Default for calendar-based tasks
+              dueDate: commonFields.endTime // Use end time as deadline? Or start? usually Tasks have due dates. Start time = do date.
+            });
+          }
+        }
       }
     } catch (e) {
       console.error('Google Sync Error', e.response?.data || e.message);
     }
 
     return {
-      meetings: meetings.map(m => {
-        const start = new Date(m.start.dateTime || m.start.date);
-        const end = new Date(m.end.dateTime || m.end.date);
-        const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-
-        return {
-          calendarEventId: m.id,
-          title: m.summary || 'No Title',
-          startTime: start,
-          endTime: end,
-          attendeesJson: JSON.stringify(m.attendees || []),
-          location: m.location || null,
-          description: m.description || null,
-          meetLink: m.hangoutLink || null,
-          htmlLink: m.htmlLink || null,
-          // Extra fields for classification
-          rawAttendeesCount: (m.attendees || []).length,
-          hasConference: !!m.conferenceData || !!m.hangoutLink,
-          isSelfOrganized: m.organizer?.self || false,
-          durationMinutes: durationMinutes
-        };
-      })
+      meetings,
+      tasks
     };
   }
 }

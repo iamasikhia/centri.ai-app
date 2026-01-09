@@ -238,8 +238,32 @@ export class IntegrationsService {
           }
         }
 
-        // Save Tasks/Todos (Optional, if provider returns them)
-        // ...
+        // Save Tasks/Todos
+        if (data.tasks && data.tasks.length > 0) {
+          for (const task of data.tasks) {
+            await this.prisma.todo.upsert({
+              where: {
+                id: task.id
+              },
+              update: {
+                title: task.title,
+                description: task.description,
+                dueDate: task.endTime, // Use end time as due date
+                calendarEventId: task.calendarEventId,
+                updatedAt: new Date()
+              },
+              create: {
+                id: task.id,
+                userId,
+                title: task.title,
+                description: task.description,
+                dueDate: task.endTime,
+                calendarEventId: task.calendarEventId,
+                status: 'pending'
+              }
+            });
+          }
+        }
 
         results.push({ provider: integration.provider, status: 'success' });
 

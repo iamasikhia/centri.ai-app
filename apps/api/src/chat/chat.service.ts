@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { PrismaService } from '../prisma/prisma.service';
 import { IntegrationsService } from '../integrations/integrations.service';
+import { DashboardService } from '../dashboard/dashboard.service';
 
 // Types matching the JSON structure requested
 export interface ChatResponse {
@@ -36,7 +37,8 @@ export class ChatService {
     constructor(
         private configService: ConfigService,
         private prisma: PrismaService,
-        private integrationsService: IntegrationsService
+        private integrationsService: IntegrationsService,
+        private dashboardService: DashboardService
     ) {
         const apiKey = this.configService.get<string>('OPENAI_API_KEY');
         if (apiKey) {
@@ -70,7 +72,7 @@ export class ChatService {
         }) as unknown as Message[];
     }
 
-    async createConversation(userId: string, title?: string): Promise<Conversation> {
+    async createConversation(userId: string, title?: string, id?: string): Promise<Conversation> {
         // Ensure user exists before creating conversation
         const userExists = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!userExists) {
@@ -86,6 +88,7 @@ export class ChatService {
 
         return this.prisma.conversation.create({
             data: {
+                id: id, // Optional custom ID
                 userId,
                 title: title || 'New Chat'
             }
@@ -121,8 +124,18 @@ export class ChatService {
             let currentConversationId = conversationId;
             let isNewConversation = false;
 
-            if (!currentConversationId) {
-                // Create new conversation
+            if (currentConversationId) {
+                // Check if it exists
+                const existing = await this.prisma.conversation.findUnique({ where: { id: currentConversationId } });
+                if (!existing) {
+                    // Create it with this ID
+                    const title = query.length > 50 ? query.substring(0, 50) + '...' : query;
+                    const newConv = await this.createConversation(userId, title, currentConversationId);
+                    currentConversationId = newConv.id;
+                    isNewConversation = true;
+                }
+            } else {
+                // Determine ID (new random one)
                 const title = query.length > 50 ? query.substring(0, 50) + '...' : query;
                 const newConv = await this.createConversation(userId, title);
                 currentConversationId = newConv.id;
@@ -132,7 +145,7 @@ export class ChatService {
             // 2. Load History (if existing conversation)
             let historyMessages: any[] = [];
             if (!isNewConversation) {
-                const dbMessages = await this.getConversationMessages(currentConversationId, userId);
+                const dbMessages = await this.getConversationMessages(currentConversationId!, userId);
                 historyMessages = dbMessages.map(m => ({ role: m.role, content: m.content }));
             }
 
@@ -218,20 +231,33 @@ export class ChatService {
         this.logger.log(`Real Data Keys found: ${Object.keys(context.integrationData).join(', ')}`);
 
         // Check if we needed data but got none
+        // Check if we needed data but got none
         const topic = context.userContext.topic_detected;
-        const hasRelevantData =
-            (topic === 'calendar' && context.integrationData.google_calendar) ||
-            (topic === 'slack' && context.integrationData.slack) ||
-            (topic === 'github' && context.integrationData.github); // Truthy if object exists (even with empty arrays)
+        let hasRelevantData = false;
+
+        if (topic === 'calendar') hasRelevantData = !!context.integrationData.google_calendar;
+        else if (topic === 'slack') hasRelevantData = !!context.integrationData.slack;
+        else if (topic === 'github') hasRelevantData = !!context.integrationData.github;
+        else if (topic === 'email') hasRelevantData = !!context.integrationData.gmail;
+        else if (topic === 'transcript') hasRelevantData = !!context.integrationData.fathom;
+        else if (topic === 'dashboard') hasRelevantData = !!context.integrationData.dashboard;
+        else hasRelevantData = true; // General topic doesn't strictly require data
 
         if (topic !== 'general' && !hasRelevantData) {
             // If specific intent but no data, check why
             const connected = context.userContext.connected_integrations;
-            const neededProvider = topic === 'calendar' ? 'Google Calendar' : (topic === 'github' ? 'GitHub' : 'Slack');
+            let neededProvider = '';
 
-            if (!connected.includes(neededProvider)) {
+            if (topic === 'calendar') neededProvider = 'Google Calendar';
+            else if (topic === 'github') neededProvider = 'GitHub';
+            else if (topic === 'slack') neededProvider = 'Slack';
+            else if (topic === 'email') neededProvider = 'Gmail';
+            else if (topic === 'transcript') neededProvider = 'Fathom';
+
+            // Only show connection error if we actually have a specific provider requirement that isn't met
+            if (neededProvider && !connected.includes(neededProvider)) {
                 return {
-                    answer: `I can't check check your ${topic} because **${neededProvider}** is not connected.`,
+                    answer: `I can't check your ${topic} because **${neededProvider}** is not connected.`,
                     citations: [],
                     insights: [],
                     actions: [{ label: `Connect ${neededProvider}`, type: 'open_url', uri: '/settings/integrations' }],
@@ -239,12 +265,23 @@ export class ChatService {
                 };
             }
 
+            // If dashboard data is missing (internal error likely) or provider connected but no data
+            if (topic === 'dashboard') {
+                return {
+                    answer: `I couldn't retrieve your dashboard data at the moment. Please try refreshing the page.`,
+                    citations: [],
+                    insights: [],
+                    actions: [],
+                    followUps: []
+                };
+            }
+
             // Connected but no data found (or error)
             return {
-                answer: `I checked your **${neededProvider}** but couldn't find any recent data matching your request.`,
+                answer: `I checked your **${neededProvider || topic}** but couldn't find any recent data matching your request.`,
                 citations: [],
                 insights: [],
-                actions: [{ label: `Check ${neededProvider} Status`, type: 'open_url', uri: '/settings/integrations' }],
+                actions: [{ label: `Check Status`, type: 'open_url', uri: '/settings/integrations' }],
                 followUps: []
             };
         }
@@ -722,6 +759,29 @@ If the 'REAL DATA' object is empty or missing the requested info, explicitly sta
             }
         }
 
+        // --- DASHBOARD DATA (Core Intelligence) ---
+        // Fetch if topic is dashboard-related OR general, as this provides crucial context like "Blockers"
+        if (topic === 'dashboard' || topic === 'general' || topic === 'tasks' || topic === 'blockers' || topic === 'risks') {
+            try {
+                this.logger.log('Fetching Dashboard data...');
+                const dbData = await this.dashboardService.getDashboardData(userId);
+
+                // Simplify for LLM (reduce token usage)
+                integrationData.dashboard = {
+                    blockers: dbData.tasks.filter(t => t.isBlocked),
+                    risks: dbData.updates,
+                    active_tasks_count: dbData.tasks.length,
+                    recent_tasks: dbData.tasks.slice(0, 5), // Only show top 5 active tasks to save tokens
+                    upcoming_meetings: dbData.meetings.slice(0, 3),
+                    team_members: dbData.people.map(p => p.displayName),
+                    github_intelligence: dbData.githubIntelligence // This is the high-level summary
+                };
+                this.logger.log('Dashboard data attached to context');
+            } catch (e) {
+                this.logger.error(`Exception fetching dashboard data for user ${userId}`, e);
+            }
+        }
+
         return {
             userContext: {
                 timezone: 'America/New_York',
@@ -739,6 +799,10 @@ If the 'REAL DATA' object is empty or missing the requested info, explicitly sta
         if (q.includes('github') || q.includes('pr') || q.includes('issue') || q.includes('code') || q.includes('repo') || q.includes('commit')) return 'github';
         if (q.includes('email') || q.includes('gmail') || q.includes('inbox') || q.includes('unread')) return 'email';
         if (q.includes('transcript') || q.includes('recording') || q.includes('fathom') || q.includes('call summary')) return 'transcript';
+
+        // Dashboard specific keywords
+        if (q.includes('dashboard') || q.includes('blocker') || q.includes('risk') || q.includes('attention') || q.includes('task') || q.includes('overview') || q.includes('stats') || q.includes('progress')) return 'dashboard';
+
         return 'general';
     }
 }

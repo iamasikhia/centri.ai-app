@@ -9,5 +9,6 @@ import { IntegrationsModule } from '../integrations/integrations.module';
     imports: [IntegrationsModule],
     controllers: [DashboardController],
     providers: [DashboardService, PrismaService],
+    exports: [DashboardService]
 })
 export class DashboardModule { }

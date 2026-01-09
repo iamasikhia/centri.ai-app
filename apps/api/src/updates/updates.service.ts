@@ -85,6 +85,17 @@ export class UpdatesService {
             }
         }
 
+        // Internal: Tasks & Reminders
+        try {
+            const taskUpdates = await this.collectTasks(userId);
+            updates.push(...taskUpdates);
+
+            const stakeholderUpdates = await this.collectStakeholders(userId);
+            updates.push(...stakeholderUpdates);
+        } catch (e) {
+            console.error('Task/Stakeholder collect error', e);
+        }
+
         // Upsert logic
         for (const item of updates) {
             await this.prisma.updateItem.upsert({
@@ -96,7 +107,6 @@ export class UpdatesService {
                     }
                 },
                 update: {
-                    // Update content but preserve read status
                     title: item.title,
                     body: item.body,
                     severity: item.severity,
@@ -370,7 +380,7 @@ export class UpdatesService {
             // 1. Get channels (Limit 5)
             const listRes = await axios.get('https://slack.com/api/conversations.list', {
                 headers: { Authorization: `Bearer ${token}` },
-                params: { types: 'public_channel,private_channel', limit: 5 }
+                params: { types: 'public_channel,private_channel,im', limit: 5 }
             });
 
             if (listRes.data.channels) {
@@ -432,6 +442,99 @@ export class UpdatesService {
             }
         } catch (e) {
             console.error('Slack collect error', e.message);
+        }
+        return items;
+    }
+
+    private async collectTasks(userId: string): Promise<any[]> {
+        const items = [];
+        try {
+            const now = new Date();
+            const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const endOfDay = new Date(startOfDay);
+            endOfDay.setDate(endOfDay.getDate() + 1);
+
+            const tasks = await this.prisma.task.findMany({
+                where: {
+                    userId,
+                    status: { not: 'Done' },
+                    dueDate: { not: null }
+                }
+            });
+
+            for (const task of tasks) {
+                if (!task.dueDate) continue;
+
+                let severity: string | null = null;
+                const due = new Date(task.dueDate);
+
+                if (due < now) severity = 'urgent'; // Overdue
+                else if (due >= startOfDay && due < endOfDay) severity = 'important'; // Due today
+
+                if (severity) {
+                    items.push({
+                        userId,
+                        source: 'tasks',
+                        type: 'task_reminder',
+                        severity,
+                        title: `Task Due: ${task.title}`,
+                        body: severity === 'urgent' ? `Overdue by ${Math.floor((now.getTime() - due.getTime()) / (3600000))} hours` : 'Due today',
+                        occurredAt: new Date(),
+                        externalId: `task_remind_${task.id}_${startOfDay.toISOString().split('T')[0]}`,
+                        url: `/todos`,
+                        metadata: { taskId: task.id }
+                    });
+                }
+            }
+        } catch (e) {
+            console.error('Task collect error', e);
+        }
+        return items;
+    }
+
+    private async collectStakeholders(userId: string): Promise<any[]> {
+        const items = [];
+        try {
+            const now = new Date();
+            const nearby = new Date(now);
+            nearby.setDate(nearby.getDate() + 3); // Due within 3 days
+
+            const stakeholders = await this.prisma.stakeholder.findMany({
+                where: {
+                    userId,
+                    nextReachOutAt: {
+                        lte: nearby
+                    }
+                }
+            });
+
+            for (const s of stakeholders) {
+                const due = new Date(s.nextReachOutAt);
+                let severity = 'info';
+                let status = 'due soon';
+
+                if (due < now) {
+                    severity = 'urgent';
+                    status = 'overdue';
+                } else {
+                    severity = 'important';
+                }
+
+                items.push({
+                    userId,
+                    source: 'internal', // or 'stakeholders'
+                    type: 'stakeholder_reminder',
+                    severity,
+                    title: `Reach out to ${s.name}`,
+                    body: `${s.role} at ${s.organization || 'Organization'}. Status: ${status}`,
+                    occurredAt: new Date(),
+                    externalId: `stakeholder_${s.id}_${due.toISOString().split('T')[0]}`,
+                    url: `/stakeholders`,
+                    metadata: { stakeholderId: s.id }
+                });
+            }
+        } catch (e) {
+            console.error('Stakeholder collect error', e);
         }
         return items;
     }

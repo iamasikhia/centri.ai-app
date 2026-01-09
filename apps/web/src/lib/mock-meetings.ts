@@ -4,6 +4,26 @@ import { addDays, subDays, subHours } from 'date-fns';
 
 export const MOCK_MEETINGS: Meeting[] = [
     {
+        id: 'm-future-1',
+        title: 'Q4 Strategy Planning',
+        date: addDays(new Date(), 2),
+        durationMinutes: 60,
+        source: 'Google Meet',
+        type: 'Team Sync',
+        status: 'processed',
+        participants: [
+            { name: 'Alice Chen', email: 'alice@acme.com', role: 'Head of Product' },
+            { name: 'Bob Smith', email: 'bob@acme.com', role: 'CTO' }
+        ],
+        summary: 'Planning session for Q4 objectives.',
+        keyTakeaways: [],
+        decisions: [],
+        actionItems: [],
+        followUps: [],
+        documents: [],
+        transcript: []
+    },
+    {
         id: 'm-1',
         title: 'Weekly Product Sync: Q3 Roadmap',
         date: subHours(new Date(), 2),

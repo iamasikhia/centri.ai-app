@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { NativeSelect } from '@/components/ui/native-select';
 import { BookOpen, Sparkles, FileText, AlertCircle, Loader2, FolderTree, Package, GitBranch, Code2, FileCode, Clock, Lightbulb } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import ReactMarkdown from 'react-markdown';
+import { MermaidChart } from '@/components/mermaid-chart';
 
 interface CodebaseAnalysis {
     repository: string;
@@ -31,6 +33,7 @@ interface CodebaseExplanation {
     productOverview: string;
     targetAudience: string;
     keyComponents: string;
+    technicalArchitecture: string;
     howItWorks: string;
     currentDevelopment: string;
     risksAndUnknowns: string;
@@ -40,17 +43,54 @@ interface CodebaseExplanation {
 export default function CodebaseOverviewPage() {
     const { data: session, status } = useSession();
     const router = useRouter();
+
+    // State with sessionStorage persistence
     const [repositories, setRepositories] = useState<Array<{ name: string; fullName: string }>>([]);
-    const [selectedRepo, setSelectedRepo] = useState<string>('');
+    const [selectedRepo, setSelectedRepo] = useState<string>(() => {
+        if (typeof window !== 'undefined') return sessionStorage.getItem('codebase_selectedRepo') || '';
+        return '';
+    });
+
     const [loading, setLoading] = useState(false);
     const [loadingRepos, setLoadingRepos] = useState(true);
-    const [analysis, setAnalysis] = useState<CodebaseAnalysis | null>(null);
-    const [explanation, setExplanation] = useState<CodebaseExplanation | null>(null);
+
+    const [analysis, setAnalysis] = useState<CodebaseAnalysis | null>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = sessionStorage.getItem('codebase_analysis');
+            return saved ? JSON.parse(saved) : null;
+        }
+        return null;
+    });
+
+    const [explanation, setExplanation] = useState<CodebaseExplanation | null>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = sessionStorage.getItem('codebase_explanation');
+            return saved ? JSON.parse(saved) : null;
+        }
+        return null;
+    });
+
     const [loadingExplanation, setLoadingExplanation] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<TabType>('overview');
+
+    const [activeTab, setActiveTab] = useState<TabType>(() => {
+        if (typeof window !== 'undefined') {
+            return (sessionStorage.getItem('codebase_activeTab') as TabType) || 'explanation';
+        }
+        return 'explanation';
+    });
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+    // Persistence Effect
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            sessionStorage.setItem('codebase_selectedRepo', selectedRepo);
+            sessionStorage.setItem('codebase_activeTab', activeTab);
+            if (analysis) sessionStorage.setItem('codebase_analysis', JSON.stringify(analysis));
+            if (explanation) sessionStorage.setItem('codebase_explanation', JSON.stringify(explanation));
+        }
+    }, [selectedRepo, activeTab, analysis, explanation]);
 
     useEffect(() => {
         if (status === 'unauthenticated') router.push('/');
@@ -69,7 +109,7 @@ export default function CodebaseOverviewPage() {
                 setError(data.error);
             } else {
                 setRepositories(data.repositories || []);
-                if (data.repositories && data.repositories.length > 0) {
+                if (data.repositories && data.repositories.length > 0 && !selectedRepo) {
                     setSelectedRepo(data.repositories[0].fullName);
                 }
             }
@@ -187,7 +227,16 @@ export default function CodebaseOverviewPage() {
                             <label className="text-sm font-medium mb-2 block">Repository</label>
                             <NativeSelect
                                 value={selectedRepo}
-                                onChange={(e) => setSelectedRepo(e.target.value)}
+                                onChange={(e) => {
+                                    const newRepo = e.target.value;
+                                    if (newRepo !== selectedRepo) {
+                                        setSelectedRepo(newRepo);
+                                        setAnalysis(null);
+                                        setExplanation(null);
+                                        sessionStorage.removeItem('codebase_analysis');
+                                        sessionStorage.removeItem('codebase_explanation');
+                                    }
+                                }}
                                 disabled={repositories.length === 0 || loading}
                             >
                                 {repositories.length === 0 ? (
@@ -245,11 +294,11 @@ export default function CodebaseOverviewPage() {
                     <div className="border-b">
                         <div className="flex gap-6">
                             {[
+                                { id: 'explanation', label: 'PM Explanation', icon: Lightbulb },
                                 { id: 'overview', label: 'Overview', icon: BookOpen },
                                 { id: 'structure', label: 'File Structure', icon: FolderTree },
                                 { id: 'dependencies', label: 'Dependencies', icon: Package },
                                 { id: 'documentation', label: 'Documentation', icon: FileText },
-                                { id: 'explanation', label: 'PM Explanation', icon: Lightbulb },
                             ].map(tab => (
                                 <button
                                     key={tab.id}
@@ -267,6 +316,94 @@ export default function CodebaseOverviewPage() {
                     </div>
 
                     {/* Tab Content */}
+                    {activeTab === 'explanation' && (
+                        <div className="space-y-6">
+                            {!explanation ? (
+                                <Card>
+                                    <CardContent className="p-8 text-center">
+                                        <Lightbulb className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
+                                        <h3 className="text-lg font-semibold mb-2">Generate PM-Friendly Explanation</h3>
+                                        <p className="text-muted-foreground mb-4">
+                                            Get an AI-powered explanation of this codebase in plain business language
+                                        </p>
+                                        <Button onClick={fetchExplanation} disabled={loadingExplanation} className="gap-2">
+                                            {loadingExplanation ? (
+                                                <>
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                    Generating Explanation...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Sparkles className="w-4 h-4" />
+                                                    Explain to PM
+                                                </>
+                                            )}
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+                            ) : (
+                                <>
+                                    {/* Executive Summary - Highlighted */}
+                                    <Card className="border-emerald-200 dark:border-emerald-900/30 bg-gradient-to-br from-emerald-50/50 to-teal-50/50 dark:from-emerald-950/20 dark:to-teal-950/20">
+                                        <CardHeader>
+                                            <CardTitle className="flex items-center gap-2 text-emerald-900 dark:text-emerald-100">
+                                                <Sparkles className="w-5 h-5" />
+                                                Executive Summary
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <p className="text-base leading-relaxed text-foreground/90">
+                                                {explanation.executiveSummary}
+                                            </p>
+                                        </CardContent>
+                                    </Card>
+
+                                    {/* Main Sections */}
+                                    <div className="grid gap-6">
+                                        <ExplanationSection
+                                            title="Product Overview"
+                                            content={explanation.productOverview}
+                                        />
+                                        <ExplanationSection
+                                            title="Technical Architecture"
+                                            content={explanation.technicalArchitecture}
+                                        />
+                                        <ExplanationSection
+                                            title="Target Audience"
+                                            content={explanation.targetAudience}
+                                        />
+                                        <ExplanationSection
+                                            title="Key Components"
+                                            content={explanation.keyComponents}
+                                        />
+                                        <ExplanationSection
+                                            title="How It Works"
+                                            content={explanation.howItWorks}
+                                        />
+                                        <ExplanationSection
+                                            title="Current Development Focus"
+                                            content={explanation.currentDevelopment}
+                                        />
+                                        <ExplanationSection
+                                            title="Risks & Unknowns"
+                                            content={explanation.risksAndUnknowns}
+                                            variant="warning"
+                                        />
+                                    </div>
+
+                                    {/* Copy Helper */}
+                                    <Card className="bg-muted/30">
+                                        <CardContent className="p-4">
+                                            <p className="text-sm text-muted-foreground">
+                                                💡 <strong>Tip:</strong> This summary is ready to copy-paste into stakeholder updates, board decks, or leadership presentations.
+                                            </p>
+                                        </CardContent>
+                                    </Card>
+                                </>
+                            )}
+                        </div>
+                    )}
+
                     {activeTab === 'overview' && (
                         <div className="space-y-6">
                             {/* Repository Info */}
@@ -452,95 +589,13 @@ export default function CodebaseOverviewPage() {
                             )}
                         </div>
                     )}
-
-                    {activeTab === 'explanation' && (
-                        <div className="space-y-6">
-                            {!explanation ? (
-                                <Card>
-                                    <CardContent className="p-8 text-center">
-                                        <Lightbulb className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
-                                        <h3 className="text-lg font-semibold mb-2">Generate PM-Friendly Explanation</h3>
-                                        <p className="text-muted-foreground mb-4">
-                                            Get an AI-powered explanation of this codebase in plain business language
-                                        </p>
-                                        <Button onClick={fetchExplanation} disabled={loadingExplanation} className="gap-2">
-                                            {loadingExplanation ? (
-                                                <>
-                                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                                    Generating Explanation...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Sparkles className="w-4 h-4" />
-                                                    Explain to PM
-                                                </>
-                                            )}
-                                        </Button>
-                                    </CardContent>
-                                </Card>
-                            ) : (
-                                <>
-                                    {/* Executive Summary - Highlighted */}
-                                    <Card className="border-emerald-200 dark:border-emerald-900/30 bg-gradient-to-br from-emerald-50/50 to-teal-50/50 dark:from-emerald-950/20 dark:to-teal-950/20">
-                                        <CardHeader>
-                                            <CardTitle className="flex items-center gap-2 text-emerald-900 dark:text-emerald-100">
-                                                <Sparkles className="w-5 h-5" />
-                                                Executive Summary
-                                            </CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <p className="text-base leading-relaxed text-foreground/90">
-                                                {explanation.executiveSummary}
-                                            </p>
-                                        </CardContent>
-                                    </Card>
-
-                                    {/* Main Sections */}
-                                    <div className="grid gap-6">
-                                        <ExplanationSection
-                                            title="Product Overview"
-                                            content={explanation.productOverview}
-                                        />
-                                        <ExplanationSection
-                                            title="Target Audience"
-                                            content={explanation.targetAudience}
-                                        />
-                                        <ExplanationSection
-                                            title="Key Components"
-                                            content={explanation.keyComponents}
-                                        />
-                                        <ExplanationSection
-                                            title="How It Works"
-                                            content={explanation.howItWorks}
-                                        />
-                                        <ExplanationSection
-                                            title="Current Development Focus"
-                                            content={explanation.currentDevelopment}
-                                        />
-                                        <ExplanationSection
-                                            title="Risks & Unknowns"
-                                            content={explanation.risksAndUnknowns}
-                                            variant="warning"
-                                        />
-                                    </div>
-
-                                    {/* Copy Helper */}
-                                    <Card className="bg-muted/30">
-                                        <CardContent className="p-4">
-                                            <p className="text-sm text-muted-foreground">
-                                                💡 <strong>Tip:</strong> This summary is ready to copy-paste into stakeholder updates, board decks, or leadership presentations.
-                                            </p>
-                                        </CardContent>
-                                    </Card>
-                                </>
-                            )}
-                        </div>
-                    )}
                 </div>
             )}
         </div>
     );
 }
+
+
 
 // Helper component for explanation sections
 function ExplanationSection({ title, content, variant = 'default' }: { title: string; content: string; variant?: 'default' | 'warning' }) {
@@ -550,7 +605,28 @@ function ExplanationSection({ title, content, variant = 'default' }: { title: st
                 <CardTitle className="text-base">{title}</CardTitle>
             </CardHeader>
             <CardContent>
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">{content}</p>
+                <div className="prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-headings:font-semibold prose-li:my-0.5">
+                    <ReactMarkdown
+                        components={{
+                            code({ node, inline, className, children, ...props }: any) {
+                                const match = /language-(\w+)/.exec(className || '');
+                                const isMermaid = match && match[1] === 'mermaid';
+
+                                if (!inline && isMermaid) {
+                                    return <MermaidChart chart={String(children).replace(/\n$/, '')} />;
+                                }
+
+                                return (
+                                    <code className={className} {...props}>
+                                        {children}
+                                    </code>
+                                );
+                            }
+                        }}
+                    >
+                        {content}
+                    </ReactMarkdown>
+                </div>
             </CardContent>
         </Card>
     );

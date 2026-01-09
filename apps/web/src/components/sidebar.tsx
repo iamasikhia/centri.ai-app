@@ -7,11 +7,36 @@ import { Home, Users, Settings, LogOut, MessageCircle, CalendarCheck, Bell, Mail
 import { useRouter, usePathname } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import { cn } from '@/lib/utils';
+import { useState, useEffect } from 'react';
+import axios from 'axios';
 
 export function Sidebar() {
     const router = useRouter();
     const pathname = usePathname();
     const { data: session, status } = useSession();
+    const [unreadCount, setUnreadCount] = useState(0);
+
+    // Poll for notifications
+    useEffect(() => {
+        const fetchUnread = async () => {
+            try {
+                const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+                const res = await axios.get(`${API_URL}/updates`, {
+                    headers: { 'x-user-id': 'default-user-id' }
+                });
+                if (res.data) {
+                    const count = res.data.filter((u: any) => !u.isRead).length;
+                    setUnreadCount(count);
+                }
+            } catch (e) {
+                // Silent error
+            }
+        };
+
+        fetchUnread(); // Initial
+        const interval = setInterval(fetchUnread, 10000); // Every 10s
+        return () => clearInterval(interval);
+    }, []);
 
     const handleLogout = async () => {
         await signOut({ callbackUrl: '/', redirect: true });
@@ -19,21 +44,20 @@ export function Sidebar() {
 
     const mainLinks = [
         { href: '/dashboard', label: 'Dashboard', icon: Home },
-        // { href: '/updates', label: 'Updates', icon: Bell },
+        // { href: '/notifications', label: 'Notifications', icon: Bell },
         // { href: '/newsletters', label: 'Newsletters', icon: Newspaper },
         { href: '/meetings', label: 'Meetings', icon: Mic },
-        { href: '/chat', label: 'Chat', icon: MessageCircle },
+        // { href: '/chat', label: 'Chat', icon: MessageCircle },
         { href: '/codebase-overview', label: 'Codebase Intelligence', icon: BookOpen },
-        // { href: '/todos', label: 'Todos', icon: CheckSquare },
+        { href: '/todos', label: 'Tasks', icon: CheckSquare },
         { href: '/questions', label: 'CheckIns', icon: CalendarCheck },
-
         { href: '/stakeholders', label: 'Stakeholders', icon: Briefcase },
         // { href: '/fundraising', label: 'Fundraising', icon: Rocket },
-        { href: '/tools', label: 'PM Tools', icon: Wrench },
-        { href: '/life-wrapped', label: 'Work Wrapped', icon: Sparkles },
     ];
 
     const footerLinks = [
+        // { href: '/tools', label: 'PM Tools', icon: Wrench },
+        { href: '/life-wrapped', label: 'Work Wrapped', icon: Sparkles },
         { href: '/settings/integrations', label: 'Integrations', icon: Zap },
         { href: '/settings', label: 'Settings', icon: Settings },
         { href: '/contact', label: 'Contact', icon: Mail },
@@ -49,6 +73,7 @@ export function Sidebar() {
         );
 
         const isActive = !isOverridden && (pathname === link.href || (link.href !== '/dashboard' && pathname?.startsWith(link.href)));
+
         return (
             <Link
                 key={link.href}

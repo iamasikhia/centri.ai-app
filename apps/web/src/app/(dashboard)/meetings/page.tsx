@@ -11,7 +11,7 @@ import { Mic, Search, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function MeetingsPage() {
-    const [filter, setFilter] = useState<'all' | MeetingStatus>('all');
+    const [filter, setFilter] = useState<'all' | 'upcoming' | 'past'>('all'); // Reformatted by Antigravity
     const [meetings, setMeetings] = useState<Meeting[]>([]);
     const [isUploadOpen, setIsUploadOpen] = useState(false);
     const [isImportOpen, setIsImportOpen] = useState(false);
@@ -137,8 +137,12 @@ export default function MeetingsPage() {
     const sorted = [...meetings].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     const filtered = sorted.filter(m => {
+        const now = new Date();
+        const meetingDate = new Date(m.date);
         if (filter === 'all') return true;
-        return m.status === filter;
+        if (filter === 'upcoming') return meetingDate > now;
+        if (filter === 'past') return meetingDate <= now;
+        return true;
     });
 
     if (isLoading) {
@@ -177,8 +181,8 @@ export default function MeetingsPage() {
             </div>
 
             {/* Filters */}
-            <div className="flex items-center gap-4 mb-6 border-b pb-1 overflow-x-auto">
-                {(['all', 'processed', 'needs-review'] as const).map((tab) => (
+            <div className="flex items-end gap-4 mb-6 border-b overflow-x-auto">
+                {(['all', 'upcoming', 'past'] as const).map((tab) => (
                     <button
                         key={tab}
                         onClick={() => setFilter(tab)}
@@ -190,11 +194,17 @@ export default function MeetingsPage() {
                             }
                         `}
                     >
-                        {tab === 'all' ? 'All Meetings' : tab === 'processed' ? 'Processed' : 'Needs Review'}
+                        {tab === 'all' ? 'All Meetings' : tab === 'upcoming' ? 'Upcoming' : 'Past Meetings'}
                         <span className="ml-2 text-xs bg-muted px-1.5 py-0.5 rounded-full opacity-70">
                             {tab === 'all'
                                 ? meetings.length
-                                : meetings.filter(m => m.status === tab).length
+                                : meetings.filter(m => {
+                                    const now = new Date();
+                                    const meetingDate = new Date(m.date);
+                                    if (tab === 'upcoming') return meetingDate > now;
+                                    if (tab === 'past') return meetingDate <= now;
+                                    return false;
+                                }).length
                             }
                         </span>
                     </button>

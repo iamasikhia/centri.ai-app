@@ -271,7 +271,15 @@ export default function DashboardPage() {
     }, [viewModel, selectedRepo, filteredGithubData]);
 
     // Actual usage derivedMomentum for rendering
-    const momentumToDisplay = derivedMomentum || (viewModel ? viewModel.momentum : null);
+    const momentumToDisplay = derivedMomentum || (viewModel ? viewModel.momentum : {
+        meetingsCompleted: 0,
+        prsMerged: 0,
+        tasksCompleted: 0,
+        reviewsPending: 0,
+        cycleTimeHours: 0,
+        meetingMakerRatio: 0,
+        investmentDistribution: { features: 0, bugs: 0, techDebt: 0 }
+    });
 
     useEffect(() => {
         if (status === 'unauthenticated') router.push('/');
@@ -333,7 +341,7 @@ export default function DashboardPage() {
     }
 
     return (
-        <div className="p-6 md:p-8 space-y-10 max-w-[1600px] mx-auto pb-20">
+        <div className="p-6 md:p-8 pt-12 space-y-10 max-w-[1600px] mx-auto pb-20">
 
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

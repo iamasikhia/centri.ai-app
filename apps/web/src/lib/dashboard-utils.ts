@@ -340,9 +340,9 @@ export function buildDashboardViewModel(
     // Insert at index 2
     baseMetrics.splice(2, 0, {
         id: 'blocked-items',
-        title: 'Work Stuck Waiting',
+        title: 'Blockers',
         value: blockedTasks.length,
-        description: 'Work that cannot progress without intervention',
+        description: 'Discussions from Meetings',
         trendLabel: blockedTasks.length > 0 ? 'Needs Attention' : 'Clear',
         trendDirection: blockedTasks.length > 0 ? 'down' : 'up'
     });
@@ -352,7 +352,7 @@ export function buildDashboardViewModel(
         id: 'decisions',
         title: 'Product Decisions',
         value: 0,
-        description: 'No data connected',
+        description: 'Discussions from Meetings',
         trendLabel: '-',
         trendDirection: 'flat'
     });

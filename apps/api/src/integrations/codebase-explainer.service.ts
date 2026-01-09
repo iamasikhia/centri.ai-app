@@ -6,6 +6,7 @@ export interface CodebaseExplanation {
     productOverview: string;
     targetAudience: string;
     keyComponents: string;
+    technicalArchitecture: string;
     howItWorks: string;
     currentDevelopment: string;
     risksAndUnknowns: string;
@@ -23,42 +24,54 @@ export class CodebaseExplainerService {
     }
 
     async explainCodebase(documentation: string, repositoryName: string): Promise<CodebaseExplanation> {
-        const prompt = `You are a senior product manager explaining a software product to a NON-TECHNICAL product manager who needs to understand what engineering is building.
+        const prompt = `You are a Chief Technology Officer (CTO) explaining the comprehensive architecture and product vision of a codebase to a Product Manager. The PM needs a robust understanding of the system's internal logic, data flow, and structural design, but explained in clear, logical terms without getting lost in syntax.
 
 Repository: ${repositoryName}
 
 Documentation:
 ${documentation}
 
-Based on the documentation above, provide a clear, business-friendly explanation of this product. Structure your response EXACTLY as follows:
+Based on the documentation above, provide a robust, detailed explanation using clear Markdown formatting. Use bullet points for lists and bold text for key concepts. Structure your response EXACTLY as follows:
 
 ## Product Overview
-[What this product does in 2-3 sentences that a CEO would understand]
+[What this product does, its core value proposition, and the primary problem it solves. 3-4 sentences.]
 
 ## Target Audience
-[Who this product is for - customers, internal teams, etc.]
+[Who are the primary users? (e.g., developers, enterprise customers, consumers). Who benefits most?]
 
 ## Key Components
-[High-level parts of the system described in simple business terms, NOT technical architecture]
+[Identify the major functional blocks (e.g., "Authentication Service", "Payment Processor", "Frontend Dashboard"). Describe what each does in business terms. Use a bulleted list.]
+
+## Technical Architecture
+[Explain the system architecture in detail.
+1. Provide a text explanation of the stack and strategy.
+2. INCLUDE A MERMAID FLOWCHART describing the high-level architecture. Wrap the mermaid code in a code block like:
+\`\`\`mermaid
+graph TD;
+    Client-->API;
+    API-->DB;
+\`\`\`
+Ensure the diagram shows the flow between Frontend, Backend, Database, and potential External Services.]
 
 ## How It Works
-[Conceptual flow of how the system operates from a user perspective]
+[Walk through a core user flow to demonstrate how the components interact. Use a numbered list for the steps.]
 
 ## Current Development Focus
-[What appears to be actively being worked on or prioritized]
+[Based on recent commits or features mentioned, what is the engineering team currently prioritizing? Use a bulleted list.]
 
 ## Risks & Unknowns
-[Any unclear areas, potential concerns, or gaps in understanding]
+[Potential scalability bottlenecks, security considerations, or areas that seem complex or undocumented.]
 
 ## Executive Summary
-[2-3 sentence summary suitable for a board deck or leadership update]
+[A high-level synthesis of the project's state, suitable for a stakeholder presentation. Focus on readiness and capability.]
 
 CRITICAL RULES:
-- Use plain business language
-- Avoid technical jargon (no "API", "database", "framework" unless absolutely necessary)
-- Write as if explaining to a non-technical stakeholder
-- Focus on WHAT and WHY, not HOW
-- Be concise but informative`;
+- Use clear, professional, yet accessible language.
+- **Use Markdown lists ( - item) and bold text (**text**) generously** to make it readable.
+- Explain "Architecture" by describing the *relationship* between parts, not just listing tools.
+- **The Mermaid diagram MUST be simple and valid syntax.**
+- Be comprehensive but concise.
+`;
 
         try {
             const response = await this.openai.chat.completions.create({
@@ -66,7 +79,7 @@ CRITICAL RULES:
                 messages: [
                     {
                         role: 'system',
-                        content: 'You are an expert product manager who translates technical documentation into executive-friendly business language.',
+                        content: 'You are an expert CTO and Product Leader capable of translating complex code architectures into clear, strategic business insights.',
                     },
                     {
                         role: 'user',
@@ -74,14 +87,14 @@ CRITICAL RULES:
                     },
                 ],
                 temperature: 0.7,
-                max_tokens: 2000,
+                max_tokens: 3000,
             });
 
             const content = response.choices[0].message.content;
             return this.parseExplanation(content);
         } catch (error) {
             console.error('[CodebaseExplainer] AI generation failed', error.message);
-            
+
             // Fallback to basic extraction if AI fails
             return this.generateFallbackExplanation(documentation, repositoryName);
         }
@@ -96,6 +109,7 @@ CRITICAL RULES:
             productOverview: `${repositoryName} - ${firstParagraph || 'A software project with documentation available for review.'}`,
             targetAudience: 'Information extracted from available documentation. Full AI analysis requires OpenAI API access.',
             keyComponents: 'Please review the documentation files directly for component details.',
+            technicalArchitecture: 'Architecture analysis requires specific documentation review or AI explanation.',
             howItWorks: 'Detailed workflow information is available in the repository documentation.',
             currentDevelopment: 'Check recent commits and pull requests for active development areas.',
             risksAndUnknowns: 'AI-powered analysis is currently unavailable. Manual review of documentation recommended.',
@@ -108,6 +122,7 @@ CRITICAL RULES:
             productOverview: this.extractSection(content, 'Product Overview'),
             targetAudience: this.extractSection(content, 'Target Audience'),
             keyComponents: this.extractSection(content, 'Key Components'),
+            technicalArchitecture: this.extractSection(content, 'Technical Architecture'),
             howItWorks: this.extractSection(content, 'How It Works'),
             currentDevelopment: this.extractSection(content, 'Current Development Focus'),
             risksAndUnknowns: this.extractSection(content, 'Risks & Unknowns'),

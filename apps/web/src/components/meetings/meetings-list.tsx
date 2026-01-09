@@ -75,64 +75,104 @@ export function MeetingsList({ meetings, isCalendarConnected = false }: Meetings
         );
     }
 
-    return (
-        <div className="grid gap-4">
-            {meetings.map((meeting) => (
-                <Link
-                    key={meeting.id}
-                    href={`/meetings/${meeting.id}`}
-                    className="group block"
-                >
-                    <div className="bg-card border rounded-xl p-5 hover:shadow-md hover:border-primary/20 transition-all flex items-center gap-6">
-                        {/* Date Box */}
-                        <div className="flex-shrink-0 flex flex-col items-center justify-center w-16 h-16 bg-muted/30 rounded-lg border text-center">
-                            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-0.5">
-                                {format(new Date(meeting.date), 'MMM')}
-                            </span>
-                            <span className="text-xl font-bold text-foreground leading-none">
-                                {format(new Date(meeting.date), 'd')}
-                            </span>
-                        </div>
+    const now = new Date();
+    const upcoming = meetings
+        .filter(m => new Date(m.date) > now)
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-                        {/* Main Info */}
-                        <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1.5">
-                                <StatusBadge status={meeting.status} />
-                                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                    <SourceIcon source={meeting.source} />
-                                    {meeting.source} • {meeting.durationMinutes} min
-                                </span>
-                            </div>
-                            <h3 className="text-lg font-semibold text-foreground truncate">{meeting.title}</h3>
-                            <div className="flex -space-x-2 mt-2.5">
-                                {meeting.participants.slice(0, 4).map((p, i) => (
-                                    <div
-                                        key={i}
-                                        className="w-6 h-6 rounded-full ring-2 ring-background bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-[10px] font-medium text-foreground overflow-hidden"
-                                        title={p.name}
-                                    >
-                                        {p.avatar ? (
-                                            <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
-                                        ) : (
-                                            p.name.charAt(0)
-                                        )}
-                                    </div>
-                                ))}
-                                {meeting.participants.length > 4 && (
-                                    <div className="w-6 h-6 rounded-full ring-2 ring-background bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-[9px] font-medium text-muted-foreground">
-                                        +{meeting.participants.length - 4}
-                                    </div>
+    const past = meetings
+        .filter(m => new Date(m.date) <= now)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    return (
+        <div className="space-y-10">
+            {upcoming.length > 0 && (
+                <div>
+                    <h2 className="text-xl font-semibold mb-4 text-foreground/80 flex items-center gap-2">
+                        Upcoming
+                        <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{upcoming.length}</span>
+                    </h2>
+                    <div className="grid gap-4">
+                        {upcoming.map((meeting) => (
+                            <MeetingCard key={meeting.id} meeting={meeting} />
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {past.length > 0 && (
+                <div>
+                    {upcoming.length > 0 && (
+                        <h2 className="text-xl font-semibold mb-4 text-foreground/80 flex items-center gap-2">
+                            Past Meetings
+                            <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{past.length}</span>
+                        </h2>
+                    )}
+                    <div className="grid gap-4">
+                        {past.map((meeting) => (
+                            <MeetingCard key={meeting.id} meeting={meeting} />
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function MeetingCard({ meeting }: { meeting: Meeting }) {
+    return (
+        <Link
+            href={`/meetings/${meeting.id}`}
+            className="group block"
+        >
+            <div className="bg-card border rounded-xl p-5 hover:shadow-md hover:border-primary/20 transition-all flex items-center gap-6">
+                {/* Date Box */}
+                <div className="flex-shrink-0 flex flex-col items-center justify-center w-16 h-16 bg-muted/30 rounded-lg border text-center">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-0.5">
+                        {format(new Date(meeting.date), 'MMM')}
+                    </span>
+                    <span className="text-xl font-bold text-foreground leading-none">
+                        {format(new Date(meeting.date), 'd')}
+                    </span>
+                </div>
+
+                {/* Main Info */}
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1.5">
+                        <StatusBadge status={meeting.status} />
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <SourceIcon source={meeting.source} />
+                            {meeting.source} • {meeting.durationMinutes} min
+                        </span>
+                    </div>
+                    <h3 className="text-lg font-semibold text-foreground truncate">{meeting.title}</h3>
+                    <div className="flex -space-x-2 mt-2.5">
+                        {meeting.participants.slice(0, 4).map((p, i) => (
+                            <div
+                                key={i}
+                                className="w-6 h-6 rounded-full ring-2 ring-background bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-[10px] font-medium text-foreground overflow-hidden"
+                                title={p.name}
+                            >
+                                {p.avatar ? (
+                                    <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
+                                ) : (
+                                    p.name.charAt(0)
                                 )}
                             </div>
-                        </div>
-
-                        {/* Arrow */}
-                        <div className="flex-shrink-0 text-muted-foreground/30 group-hover:text-primary transition-colors group-hover:translate-x-1 duration-200">
-                            <ChevronRight className="w-6 h-6" />
-                        </div>
+                        ))}
+                        {meeting.participants.length > 4 && (
+                            <div className="w-6 h-6 rounded-full ring-2 ring-background bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-[9px] font-medium text-muted-foreground">
+                                +{meeting.participants.length - 4}
+                            </div>
+                        )}
                     </div>
-                </Link>
-            ))}
-        </div>
+                </div>
+
+                {/* Arrow */}
+                <div className="flex-shrink-0 text-muted-foreground/30 group-hover:text-primary transition-colors group-hover:translate-x-1 duration-200">
+                    <ChevronRight className="w-6 h-6" />
+                </div>
+            </div>
+        </Link>
     );
 }

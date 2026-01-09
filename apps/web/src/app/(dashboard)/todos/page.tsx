@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, CheckCircle2, Circle, Trash2, Calendar, AlertCircle, Clock, Archive } from 'lucide-react';
+import { Plus, CheckCircle2, Circle, Trash2, Calendar, AlertCircle, Clock, Archive, RefreshCw } from 'lucide-react';
 import { format, isToday, isTomorrow, isPast } from 'date-fns';
 import axios from 'axios';
 import { cn } from '@/lib/utils';
@@ -47,10 +47,12 @@ export default function TodosPage() {
         completed: [],
     });
     const [loading, setLoading] = useState(true);
+    const [isSyncing, setIsSyncing] = useState(false);
 
     const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
 
-    // Mock functionality for calendar linking
+    // Check local storage or fetch for calendar status if needed, 
+    // but for now we'll just allow sync if user clicks it.
     const isCalendarLinked = false;
 
     useEffect(() => {
@@ -70,6 +72,20 @@ export default function TodosPage() {
             console.error('Failed to fetch todos:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSync = async () => {
+        setIsSyncing(true);
+        try {
+            await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/integrations/sync`, {}, {
+                headers: { 'x-user-id': 'default-user-id' }
+            });
+            await fetchTodos();
+        } catch (e) {
+            console.error("Sync failed", e);
+        } finally {
+            setIsSyncing(false);
         }
     };
 
@@ -289,14 +305,26 @@ export default function TodosPage() {
                         Manage your daily work and sync with your calendar
                     </p>
                 </div>
-                <Button
-                    size="lg"
-                    onClick={() => setIsAddTaskOpen(true)}
-                    className="shadow-lg shadow-primary/20"
-                >
-                    <Plus className="w-5 h-5 mr-2" />
-                    Add Task
-                </Button>
+                <div className="flex items-center gap-3">
+                    <Button
+                        variant="outline"
+                        size="lg"
+                        onClick={handleSync}
+                        disabled={isSyncing}
+                        className={cn("bg-background shadow-sm hover:bg-muted", isSyncing && "opacity-80")}
+                    >
+                        <RefreshCw className={cn("w-5 h-5 mr-2", isSyncing && "animate-spin")} />
+                        {isSyncing ? 'Syncing...' : 'Sync Calendar'}
+                    </Button>
+                    <Button
+                        size="lg"
+                        onClick={() => setIsAddTaskOpen(true)}
+                        className="shadow-lg shadow-primary/20"
+                    >
+                        <Plus className="w-5 h-5 mr-2" />
+                        Add Task
+                    </Button>
+                </div>
             </div>
 
 

@@ -1,9 +1,15 @@
+'use client';
 
 import { ActionItem } from '@/types/meeting';
-import { CheckSquare, User, Calendar, Plus, ExternalLink, ArrowRight } from 'lucide-react';
+import { CheckSquare, User, Calendar, Plus, ExternalLink, ArrowRight, Loader2, Check } from 'lucide-react';
 import { format } from 'date-fns';
+import { useState } from 'react';
+import axios from 'axios';
 
 export function MeetingActionItems({ actions }: { actions: ActionItem[] }) {
+    const [creatingId, setCreatingId] = useState<string | null>(null);
+    const [createdIds, setCreatedIds] = useState<Set<string>>(new Set());
+
     if (actions.length === 0) {
         return (
             <div className="bg-muted/10 border border-dashed rounded-xl p-6 text-center text-sm text-muted-foreground">
@@ -27,6 +33,31 @@ export function MeetingActionItems({ actions }: { actions: ActionItem[] }) {
             case 'create-doc': return 'Create Doc';
             case 'reach-out': return 'Reach Out';
             default: return 'Task';
+        }
+    };
+
+    const handleCreateTask = async (item: ActionItem) => {
+        if (createdIds.has(item.id)) return;
+
+        setCreatingId(item.id);
+        try {
+            const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+            await axios.post(`${API_URL}/todos`, {
+                title: item.description,
+                description: `Created from meeting action item. Owner: ${item.owner || 'Unknown'}`,
+                dueDate: item.dueDate,
+                status: 'pending',
+                priority: 'medium'
+            }, {
+                headers: { 'x-user-id': 'default-user-id' }
+            });
+
+            setCreatedIds(prev => new Set(prev).add(item.id));
+        } catch (error) {
+            console.error('Failed to create task from action item', error);
+            // Optionally show an error toast here
+        } finally {
+            setCreatingId(null);
         }
     };
 
@@ -66,8 +97,28 @@ export function MeetingActionItems({ actions }: { actions: ActionItem[] }) {
 
                         {/* Actions */}
                         <div className="flex items-center gap-2 pt-2 sm:pt-0 pl-12 sm:pl-0">
-                            <button className="flex-1 sm:flex-none h-8 px-3 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap">
-                                Create Task
+                            <button
+                                onClick={() => handleCreateTask(item)}
+                                disabled={creatingId === item.id || createdIds.has(item.id)}
+                                className={`flex-1 sm:flex-none h-8 px-3 text-xs font-medium rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5
+                                    ${createdIds.has(item.id)
+                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400 cursor-default'
+                                        : 'bg-primary text-primary-foreground hover:opacity-90'
+                                    }`}
+                            >
+                                {creatingId === item.id ? (
+                                    <>
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                        Creating...
+                                    </>
+                                ) : createdIds.has(item.id) ? (
+                                    <>
+                                        <Check className="w-3 h-3" />
+                                        Task Created
+                                    </>
+                                ) : (
+                                    'Create Task'
+                                )}
                             </button>
                             {item.type === 'schedule-meeting' && (
                                 <button className="flex-1 sm:flex-none h-8 px-3 bg-muted text-foreground text-xs font-medium rounded-lg hover:bg-muted/80 transition-colors whitespace-nowrap">
