@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,10 +14,12 @@ interface AddTaskModalProps {
     isOpen: boolean;
     onClose: () => void;
     onAddTasks: (tasks: Partial<Task>[]) => void;
+    onEditTask?: (task: Partial<Task>) => void;
+    taskToEdit?: any; // Using any or specific Todo interface from parent, but Partial<Task> is safer if matched
     isCalendarLinked: boolean;
 }
 
-export function AddTaskModal({ isOpen, onClose, onAddTasks, isCalendarLinked }: AddTaskModalProps) {
+export function AddTaskModal({ isOpen, onClose, onAddTasks, onEditTask, taskToEdit, isCalendarLinked }: AddTaskModalProps) {
     const [mode, setMode] = useState<'manual' | 'scan'>('manual');
     const [isScanning, setIsScanning] = useState(false);
     const [scannedAvailable, setScannedAvailable] = useState<Partial<Task>[]>([]);
@@ -27,6 +29,24 @@ export function AddTaskModal({ isOpen, onClose, onAddTasks, isCalendarLinked }: 
     const [manualDate, setManualDate] = useState('');
     const [manualDescription, setManualDescription] = useState('');
     const [manualPriority, setManualPriority] = useState<'High' | 'Medium' | 'Low'>('Medium');
+    const [addToCalendar, setAddToCalendar] = useState(false);
+
+    useEffect(() => {
+        if (taskToEdit) {
+            setManualTitle(taskToEdit.title || '');
+            setManualDescription(taskToEdit.description || '');
+            setManualDate(taskToEdit.dueDate ? new Date(taskToEdit.dueDate).toISOString().slice(0, 16) : '');
+            setManualPriority(taskToEdit.priority ? (taskToEdit.priority.charAt(0).toUpperCase() + taskToEdit.priority.slice(1)) as any : 'Medium');
+            setMode('manual');
+        } else {
+            // Reset if not editing
+            setManualTitle('');
+            setManualDescription('');
+            setManualDate('');
+            setManualPriority('Medium');
+            setAddToCalendar(false);
+        }
+    }, [taskToEdit, isOpen]);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -55,19 +75,35 @@ export function AddTaskModal({ isOpen, onClose, onAddTasks, isCalendarLinked }: 
 
     const handleManualSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onAddTasks([{
-            id: `manual-${Date.now()}`,
+
+        const taskData = {
             title: manualTitle,
             description: manualDescription,
             dueDate: manualDate || undefined,
-            status: 'Todo',
             priority: manualPriority,
-            source: 'other'
-        }]);
+            status: 'pending',
+        };
+
+        if (taskToEdit && onEditTask) {
+            onEditTask({
+                ...taskData,
+                addToCalendar // Add logic for this in edit flow if needed, but usually create-only
+            } as any);
+        } else {
+            onAddTasks([{
+                id: `manual-${Date.now()}`,
+                ...taskData,
+                source: 'other',
+                // @ts-ignore - passing extra flag for backend
+                addToCalendar: addToCalendar
+            }]);
+        }
+
         setManualTitle('');
         setManualDate('');
         setManualDescription('');
         setManualPriority('Medium');
+        setAddToCalendar(false);
         onClose();
     };
 
@@ -78,27 +114,29 @@ export function AddTaskModal({ isOpen, onClose, onAddTasks, isCalendarLinked }: 
             <div className="relative w-full max-w-lg bg-background rounded-2xl shadow-2xl border flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="p-4 border-b flex items-center justify-between bg-muted/20">
-                    <h2 className="text-lg font-bold">Add New Tasks</h2>
+                    <h2 className="text-lg font-bold">{taskToEdit ? 'Edit Task' : 'Add New Tasks'}</h2>
                     <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 rounded-full">
                         <X className="w-4 h-4" />
                     </Button>
                 </div>
 
-                {/* Tabs */}
-                <div className="flex border-b">
-                    <button
-                        onClick={() => setMode('manual')}
-                        className={cn("flex-1 py-3 text-sm font-medium transition-colors border-b-2", mode === 'manual' ? "border-primary text-primary bg-primary/5" : "border-transparent text-muted-foreground hover:bg-muted/50")}
-                    >
-                        Manual Entry
-                    </button>
-                    <button
-                        onClick={() => setMode('scan')}
-                        className={cn("flex-1 py-3 text-sm font-medium transition-colors border-b-2", mode === 'scan' ? "border-primary text-primary bg-primary/5" : "border-transparent text-muted-foreground hover:bg-muted/50")}
-                    >
-                        Scan from Image
-                    </button>
-                </div>
+                {/* Tabs - Only show when creating new task */}
+                {!taskToEdit && (
+                    <div className="flex border-b">
+                        <button
+                            onClick={() => setMode('manual')}
+                            className={cn("flex-1 py-3 text-sm font-medium transition-colors border-b-2", mode === 'manual' ? "border-primary text-primary bg-primary/5" : "border-transparent text-muted-foreground hover:bg-muted/50")}
+                        >
+                            Manual Entry
+                        </button>
+                        <button
+                            onClick={() => setMode('scan')}
+                            className={cn("flex-1 py-3 text-sm font-medium transition-colors border-b-2", mode === 'scan' ? "border-primary text-primary bg-primary/5" : "border-transparent text-muted-foreground hover:bg-muted/50")}
+                        >
+                            Scan from Image
+                        </button>
+                    </div>
+                )}
 
                 {/* Content */}
                 <div className="p-6">
@@ -164,10 +202,28 @@ export function AddTaskModal({ isOpen, onClose, onAddTasks, isCalendarLinked }: 
                                     </div>
                                 </div>
                             </div>
+
+
+                            {!taskToEdit && (
+                                <div className="flex items-center space-x-2 pt-2">
+                                    <input
+                                        type="checkbox"
+                                        id="addToCalendar"
+                                        checked={addToCalendar}
+                                        onChange={(e) => setAddToCalendar(e.target.checked)}
+                                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                        disabled={!isCalendarLinked && !manualDate}
+                                    />
+                                    <Label htmlFor="addToCalendar" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                        Add to Calendar
+                                    </Label>
+                                </div>
+                            )}
+
                             <div className="pt-2 flex justify-end">
                                 <Button type="submit" disabled={!manualTitle} className="gap-2">
-                                    <Plus className="w-4 h-4" />
-                                    Add Task
+                                    {taskToEdit ? <CheckCircle2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                                    {taskToEdit ? 'Save Changes' : 'Add Task'}
                                 </Button>
                             </div>
                         </form>

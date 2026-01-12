@@ -18,6 +18,9 @@ export class CreateTodoDto {
     @IsOptional()
     @IsEnum(['low', 'medium', 'high'])
     priority?: 'low' | 'medium' | 'high';
+
+    @IsOptional()
+    addToCalendar?: boolean;
 }
 
 export class UpdateTodoDto {
@@ -40,6 +43,8 @@ export class UpdateTodoDto {
     @IsOptional()
     @IsEnum(['pending', 'in_progress', 'completed'])
     status?: 'pending' | 'in_progress' | 'completed';
+    @IsOptional()
+    addToCalendar?: boolean;
 }
 
 @Controller('todos')

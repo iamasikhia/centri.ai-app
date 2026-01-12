@@ -4,6 +4,7 @@ import OpenAI from 'openai';
 import { PrismaService } from '../prisma/prisma.service';
 import { IntegrationsService } from '../integrations/integrations.service';
 import { DashboardService } from '../dashboard/dashboard.service';
+import { CodebaseAnalyzerService } from '../integrations/codebase-analyzer.service';
 
 // Types matching the JSON structure requested
 export interface ChatResponse {
@@ -38,7 +39,8 @@ export class ChatService {
         private configService: ConfigService,
         private prisma: PrismaService,
         private integrationsService: IntegrationsService,
-        private dashboardService: DashboardService
+        private dashboardService: DashboardService,
+        private codebaseAnalyzer: CodebaseAnalyzerService
     ) {
         const apiKey = this.configService.get<string>('OPENAI_API_KEY');
         if (apiKey) {
@@ -286,44 +288,79 @@ export class ChatService {
             };
         }
 
-        // 2. Construct System Prompt (Strict Real Data Only)
-        const systemPrompt = `
+        // 2. Determine System Prompt based on Topic
+        let systemPrompt = `
 You are Centri Co-Pilot, an AI assistant.
 
 # CRITICAL RULES
 1. **ONLY use data explicitly provided in the context below.**
 2. **NEVER make up meetings, emails, or messages.**
-3. **NEVER say "You might have..." or "Typically...".**
-4. **If data is missing, explicitly say "I don't have access to that data".**
-5. **Always cite the actual source using [Source Name].**
-6. **Quote exact meeting titles, email subjects, and Slack messages.**
-"You have 5 unread emails from @sarah [Gmail]. Your next 1:1 with her is tomorrow at 4pm [Google Calendar]. 
-Last time you met (Dec 15), you discussed the API redesign based on your calendar history."
+3. **If data is missing, explicitly say "I don't have access to that data".**
+4. **Always cite the actual source using [Source Name].**
+`;
 
-**Example 3: Fathom + GitHub + Calendar**
-"Your last meeting 'Sprint Planning' on Jan 7 [Fathom] had these action items:
-- Review PR #241 (OAuth implementation) - Currently in review [GitHub]
-- Schedule design sync - Not yet on calendar [Google Calendar]
+        const promptTopic = context.userContext.topic_detected;
 
-Would you like me to help schedule the design sync?"
+        if (promptTopic === 'codebase') {
+            systemPrompt += `
+# TECH MODE: Codebase Analyst
+You are answering questions about software architecture and code.
+**FORMATTING IS CRITICAL.** Your answer must be easy to scan.
 
-# Response Format
+## Structure Your Answer Like This:
+### 1. High-Level Summary
+[Brief 1-2 sentence overview]
+
+### 2. Tech Stack & Key Components
+- **Frontend**: [Details]
+- **Backend**: [Details]
+- **Database**: [Details]
+
+### 3. Architecture & Patterns
+[Explain the data flow and design patterns used]
+
+### 4. File Structure (If relevant)
+- \`apps/web\`: [Description]
+- \`apps/api\`: [Description]
+
+### 5. Recent Activity
+[Mention recent commits or changes if data is available]
+
+# formatting Rules
+- ALWAYS use \`###\` for section headers.
+- ALWAYS use bullet points for lists.
+- ALWAYS use \`code blocks\` for file paths or commands.
+- Add an empty line between every section.
+`;
+        } else {
+            systemPrompt += `
+# RESPONSE FORMATTING & STRUCTURE
+- **Structure**: Break down complex answers into clear sections using \`###\` headers.
+- **Lists**: ALWAYS use bullet points (\`-\`) for listing items (emails, meetings, tasks, files).
+- **Readability**: Keep paragraphs short (max 2-3 sentences). Add empty lines between sections.
+- **Highlights**: Use **Bold** for important entities (People, Dates, Projects).
+- **Quotes**: Use \`> blockquotes\` for email snippets or message content.
+
+**Example Structure:**
+### 📅 Upcoming Meetings
+- **Team Sync** at 10:00 AM
+- **Client Call** at 2:00 PM
+
+### 📩 Recent Emails
+> "Can we reschedule?" - **John Doe**
+`;
+        }
+
+        systemPrompt += `
+# Response JSON Format
 Return a strictly valid JSON object:
 {
-  "answer": "Direct answer using ONLY provided data with inline citations [Source].",
+  "answer": "Your structured markdown response here...",
   "citations": [{"source": "Source Name", "type": "calendar", "count": 1}],
-  "insights": ["Pattern detected from data", "Connection between sources"],
+  "insights": ["Pattern detected", "Key takeaway"],
   "actions": [{"label": "Action Name", "type": "open_url", "uri": "url"}],
   "followUps": ["Related question 1", "Related question 2"]
 }
-
-# Important Guidelines
-- Use bullet points for lists
-- Include specific times, dates, names from the data
-- Highlight patterns (e.g., "You have 18 hours of meetings this week - higher than usual")
-- Connect related information across sources
-- Suggest actionable next steps
-- Keep responses concise but informative
 `;
 
         const userPrompt = `
@@ -667,6 +704,62 @@ If the 'REAL DATA' object is empty or missing the requested info, explicitly sta
             }
         }
 
+        // --- Codebase Intelligence ---
+        if ((topic === 'codebase' || topic === 'general') && connectedIntegrationsStr.some(i => i.includes('GitHub'))) {
+            // We reuse GitHub token, but logic needs separate try/catch
+            // Note: 'GitHub' is added to string in previous block even if error, so we double check token exists
+        }
+
+        // --- Codebase Intelligence (Detailed Analysis) ---
+        if (topic === 'codebase' || topic === 'general') {
+            try {
+                // Reuse GitHub connection
+                const token = await this.integrationsService.getDecryptedToken(userId, 'github');
+                if (token && token.access_token) {
+                    // Logic to analyze repo matches here
+                    let targetRepo = '';
+                    let owner = '';
+
+                    const reposRes = await fetch('https://api.github.com/user/repos?sort=updated&per_page=10&type=owner', {
+                        headers: { Authorization: `Bearer ${token.access_token}`, Accept: 'application/vnd.github.v3+json' }
+                    });
+
+                    if (reposRes.ok) {
+                        const repos = await reposRes.json();
+                        // Find repo in query OR default to first
+                        const matchedRepo = repos.find((r: any) => query.toLowerCase().includes(r.name.toLowerCase()));
+
+                        if (matchedRepo) {
+                            targetRepo = matchedRepo.name;
+                            owner = matchedRepo.owner.login;
+                        } else if (repos.length > 0) {
+                            targetRepo = repos[0].name;
+                            owner = repos[0].owner.login;
+                        }
+                    }
+
+                    if (targetRepo && owner) {
+                        // Calls CodebaseAnalyzer
+                        this.logger.log(`Analyzing codebase for chat: ${owner}/${targetRepo}`);
+                        const analysis = await this.codebaseAnalyzer.analyzeRepository(token.access_token, owner, targetRepo);
+
+                        integrationData.codebase = {
+                            repository: analysis.repository,
+                            language_breakdown: analysis.languages,
+                            dependencies: analysis.dependencies.slice(0, 20),
+                            readme_excerpt: analysis.readme ? analysis.readme.substring(0, 1500) : 'No README',
+                            file_tree_snippet: analysis.fileTree.slice(0, 50).map(f => f.path).join(', '),
+                            recent_commits: analysis.recentCommits
+                        };
+                        // Explicitly note this is codebase data
+                        this.logger.log('Codebase data attached');
+                    }
+                }
+            } catch (e) {
+                this.logger.error('Failed to fetch codebase intelligence', e);
+            }
+        }
+
         // --- Gmail ---
         if ((topic === 'email' || topic === 'general') && connectedProviders.includes('gmail')) {
             try {
@@ -823,7 +916,11 @@ If the 'REAL DATA' object is empty or missing the requested info, explicitly sta
         const q = query.toLowerCase();
         if (q.includes('meeting') || q.includes('calendar') || q.includes('schedule') || q.includes('appointment')) return 'calendar';
         if (q.includes('slack') || q.includes('message') || q.includes('chat') || q.includes('dm') || q.includes('channel')) return 'slack';
-        if (q.includes('github') || q.includes('pr') || q.includes('issue') || q.includes('code') || q.includes('repo') || q.includes('commit')) return 'github';
+
+        // Codebase Intelligence priority
+        if (q.includes('architecture') || q.includes('structure') || q.includes('file') || q.includes('folder') || q.includes('codebase') || q.includes('repo') || q.includes('files') || q.includes('class') || q.includes('function') || q.includes('component') || q.includes('explain the code')) return 'codebase';
+
+        if (q.includes('github') || q.includes('pr') || q.includes('issue') || q.includes('commit') || q.includes('pull request')) return 'github';
         if (q.includes('email') || q.includes('gmail') || q.includes('inbox') || q.includes('unread')) return 'email';
         if (q.includes('transcript') || q.includes('recording') || q.includes('fathom') || q.includes('call summary')) return 'transcript';
         if (q.includes('stakeholder') || q.includes('client') || q.includes('contact') || q.includes('partner')) return 'stakeholder';

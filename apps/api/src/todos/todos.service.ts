@@ -161,7 +161,9 @@ export class TodosService {
             },
         });
 
-        if (todo.dueDate) {
+        // Sync to calendar if requested or if legacy behavior (auto-sync if due date existed previously, but now we want explicit control)
+        // User request: "I want to be able to add it", implies choice.
+        if (dto.addToCalendar && todo.dueDate) {
             await this.syncTodoToCalendar(userId, todo);
         }
 
@@ -169,6 +171,7 @@ export class TodosService {
     }
 
     async updateTodo(userId: string, id: string, dto: UpdateTodoDto) {
+        console.log(`[TodosService] Updating todo ${id}:`, dto);
         // ensure user might be needed if they were deleted? Unlikely.
 
         const todo = await this.prisma.todo.findFirst({
@@ -275,6 +278,7 @@ export class TodosService {
             });
         } catch (error) {
             console.error('Failed to sync todo to Google Tasks:', error);
+            throw new Error(`Failed to sync to Google Tasks: ${error.message}`);
         }
     }
 
