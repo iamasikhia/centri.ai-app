@@ -35,4 +35,10 @@ export class UpdatesController {
         const userId = req.headers['x-user-id'] || 'default-user-id';
         return this.service.dismiss(id, userId);
     }
+
+    @Post('dismiss-all')
+    dismissAll(@Req() req: any) {
+        const userId = req.headers['x-user-id'] || 'default-user-id';
+        return this.service.dismissAll(userId);
+    }
 }

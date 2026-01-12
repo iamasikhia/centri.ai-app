@@ -9,8 +9,10 @@ import { MeetingActionItems } from '@/components/meetings/meeting-action-items';
 import { TranscriptViewer } from '@/components/meetings/transcript-viewer';
 import { Meeting } from '@/types/meeting';
 import { format } from 'date-fns';
-import { ArrowLeft, Calendar, Users, FileText, Share2, MoreHorizontal, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Calendar, Users, FileText, Share2, MoreHorizontal, ExternalLink, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 export default function MeetingDetailPage({ params }: { params: { id: string } }) {
     const [meeting, setMeeting] = useState<Meeting | null | undefined>(undefined);
@@ -97,6 +99,35 @@ export default function MeetingDetailPage({ params }: { params: { id: string } }
         fetchMeeting();
     }, [params.id]);
 
+    const handleRetry = async () => {
+        if (!meeting) return;
+        setMeeting({ ...meeting, status: 'processing', summary: 'Re-analyzing transcript...' });
+
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+        try {
+            const res = await fetch(`${API_URL}/meetings/${params.id}/analyze`, {
+                method: 'POST',
+                headers: { 'x-user-id': 'default-user-id' }
+            });
+
+            if (res.ok) {
+                // Determine new status from valid response if possible, or just force reload
+                const m = await res.json();
+                // Instead of fully mapping here again, simpler to just trigger the useEffect to refetch
+                // But we can also just reload window or update state. 
+                // For valid immediate feedback, let's reload the page content by calling fetchMeeting logic if extracted,
+                // or just force a reload for simplicity.
+                window.location.reload();
+            } else {
+                alert('Analysis retry failed.');
+                setMeeting({ ...meeting, status: 'failed' });
+            }
+        } catch (e) {
+            console.error("Retry failed", e);
+            setMeeting({ ...meeting, status: 'failed' });
+        }
+    };
+
     if (meeting === undefined) {
         return <div className="h-full flex items-center justify-center text-muted-foreground">Loading...</div>;
     }
@@ -135,6 +166,14 @@ export default function MeetingDetailPage({ params }: { params: { id: string } }
                 </div>
 
                 <div className="flex items-center gap-2">
+                    <button
+                        onClick={handleRetry}
+                        disabled={meeting.status === 'processing'}
+                        className="flex items-center gap-2 px-3 py-1.5 border rounded-lg text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
+                    >
+                        <RefreshCw className={cn("w-4 h-4", meeting.status === 'processing' && "animate-spin")} />
+                        {meeting.status === 'processing' ? 'Analyzing...' : 'Re-Analyze'}
+                    </button>
                     <button className="hidden sm:flex items-center gap-2 px-3 py-1.5 border rounded-lg text-sm font-medium hover:bg-muted transition-colors">
                         <Share2 className="w-4 h-4" /> Share Brief
                     </button>
@@ -179,8 +218,11 @@ export default function MeetingDetailPage({ params }: { params: { id: string } }
                         </div>
                     )}
                     {meeting.status === 'failed' && (
-                        <div className="px-2.5 py-1 bg-red-500/10 text-red-600 border border-red-500/20 rounded-full text-xs font-semibold">
-                            Processing Failed
+                        <div className="flex items-center gap-2">
+                            <div className="px-2.5 py-1 bg-red-500/10 text-red-600 border border-red-500/20 rounded-full text-xs font-semibold">
+                                Processing Failed
+                            </div>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={handleRetry}>Retry</Button>
                         </div>
                     )}
                 </div>

@@ -4,12 +4,11 @@ const prisma = new PrismaClient();
 async function main() {
     const userId = 'default-user-id';
 
-    // Cleanup
-    await prisma.user.deleteMany({ where: { id: userId } }).catch(() => { });
-
-    // Create User
-    await prisma.user.create({
-        data: {
+    // Create or Update User (Non-destructive to preserve integrations)
+    await prisma.user.upsert({
+        where: { id: userId },
+        update: {}, // Don't overwrite if exists
+        create: {
             id: userId,
             email: 'manager@centri.ai',
             name: 'Manager One',

@@ -89,6 +89,7 @@ model Meeting {
   highlightsJson   String?   @db.Text
   actionItemsJson  String?   @db.Text
   decisionsJson    String?   @db.Text
+  blockersJson     String?   @db.Text
   
   calendarEventType       String?    // 'meeting'|'task'|'unknown'
   calendarEventConfidence Float?

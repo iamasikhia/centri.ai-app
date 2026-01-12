@@ -168,6 +168,13 @@ export class UpdatesService {
         return this.prisma.updateItem.update({ where: { id }, data: { isDismissed: true } });
     }
 
+    async dismissAll(userId: string) {
+        return this.prisma.updateItem.updateMany({
+            where: { userId, isDismissed: false },
+            data: { isDismissed: true, isRead: true }
+        });
+    }
+
     async getNewsletters(userId: string) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);

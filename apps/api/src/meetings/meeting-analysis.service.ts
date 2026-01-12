@@ -29,6 +29,12 @@ export class MeetingAnalysisService {
 
         console.log(`[Analysis] Processing ${meetingId}...`);
 
+        // Set status to processing
+        await this.prisma.meeting.update({
+            where: { id: meetingId },
+            data: { processingStatus: 'processing' }
+        });
+
         let analysis: any;
 
         if (this.openai) {
@@ -57,6 +63,8 @@ export class MeetingAnalysisService {
                 highlightsJson: JSON.stringify(analysis.highlights || []),
                 actionItemsJson: JSON.stringify(analysis.actionItems || []),
                 decisionsJson: JSON.stringify(analysis.decisions || []),
+                blockersJson: JSON.stringify(analysis.blockers || []),
+                processingStatus: 'processed'
             }
         });
 
@@ -71,6 +79,7 @@ Extract:
 2. "highlights": Key takeaways or discussion points (list of strings).
 3. "decisions": Explicit decisions made (list of strings).
 4. "actionItems": List of objects with { "description": string, "owner": string (or "Unknown"), "priority": "High"|"Medium"|"Low", "dueDate": null }.
+5. "blockers": List of strings describing any obstacles, risks, or blocking issues discussed.
 
 Output EXCLUSIVELY strictly valid JSON.
         `;

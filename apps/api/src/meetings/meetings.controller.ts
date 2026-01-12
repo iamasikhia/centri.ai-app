@@ -22,4 +22,10 @@ export class MeetingsController {
         if (!userId) throw new UnauthorizedException('User ID required');
         return this.meetingsService.create(userId, body);
     }
+
+    @Post(':id/analyze')
+    async analyze(@Headers('x-user-id') userId: string, @Param('id') id: string) {
+        if (!userId) throw new UnauthorizedException('User ID required');
+        return this.meetingsService.reanalyze(id, userId);
+    }
 }

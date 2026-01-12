@@ -9,21 +9,73 @@ import { X, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DetailedMetric } from "@/lib/dashboard-utils";
 
+import { Task, Meeting } from "@/lib/dashboard-utils";
+
 interface MetricDetailsSidebarProps {
     isOpen: boolean;
     onClose: () => void;
     metric: DetailedMetric | null;
     githubData?: any;
+    blockers?: Task[];
+    meetings?: Meeting[];
 }
 
-export function MetricDetailsSidebar({ isOpen, onClose, metric, githubData }: MetricDetailsSidebarProps) {
+export function MetricDetailsSidebar({ isOpen, onClose, metric, githubData, blockers = [], meetings = [] }: MetricDetailsSidebarProps) {
     if (!metric) return null;
 
     let items: any[] = [];
     let type = 'general';
     let actualValue = metric.value; // Default to passed value
 
-    if (githubData) {
+    if (metric.id === 'blocked-items') {
+        type = 'blocker';
+
+        // 1. Blocked Tasks
+        items = blockers.map(b => ({
+            id: b.id,
+            title: b.title,
+            description: `Blocked by: ${b.blockedBy ? b.blockedBy.map(x => x.title || 'Unknown').join(', ') : 'Unknown'}`,
+            date: new Date(b.updatedAt || new Date()).toLocaleString(),
+            status: 'Blocked Task'
+        }));
+
+        // 2. Transcript Blockers (from meetings)
+        meetings.forEach((m: any) => {
+            if (m.blockers && Array.isArray(m.blockers)) {
+                m.blockers.forEach((b: string | any, i: number) => {
+                    const text = typeof b === 'string' ? b : b.text || b.description;
+                    items.push({
+                        id: `${m.id}-blocker-${i}`,
+                        title: text,
+                        description: `Raised in meeting: ${m.title}`,
+                        date: new Date(m.startTime).toLocaleString(),
+                        status: 'Meeting Blocker'
+                    });
+                });
+            }
+        });
+
+        actualValue = items.length;
+
+    } else if (metric.id === 'decisions') {
+        type = 'decision';
+        items = [];
+        meetings.forEach((m: any) => {
+            if (m.decisions && Array.isArray(m.decisions)) {
+                m.decisions.forEach((d: string | any, i: number) => {
+                    const text = typeof d === 'string' ? d : d.text || d.description;
+                    items.push({
+                        id: `${m.id}-dec-${i}`,
+                        title: text,
+                        description: `Decided in: ${m.title}`,
+                        date: new Date(m.startTime).toLocaleString(),
+                        status: 'Decision'
+                    });
+                });
+            }
+        });
+        actualValue = items.length;
+    } else if (githubData) {
         if (metric.id === 'repo-updates') {
             type = 'commit';
             const commits = githubData.commits || [];

@@ -74,12 +74,17 @@ export function TranscriptUploadModal({ open, onClose, onUpload }: TranscriptUpl
                 durationMinutes: 60,
                 source: 'Upload',
                 type: 'Team Sync',
-                status: 'processing', // Indicate it's being analyzed
+                status: (newMeetingData.processingStatus as any) || 'processed',
                 participants: [],
-                summary: 'Processing AI analysis...', // Placeholder until viewed/refreshed
-                keyTakeaways: [],
-                decisions: [],
-                actionItems: [],
+                summary: newMeetingData.summary || 'No summary available.',
+                keyTakeaways: newMeetingData.highlightsJson ? JSON.parse(newMeetingData.highlightsJson) : [],
+                decisions: newMeetingData.decisionsJson ? JSON.parse(newMeetingData.decisionsJson) : [],
+                actionItems: (newMeetingData.actionItemsJson ? JSON.parse(newMeetingData.actionItemsJson) : []).map((item: any, i: number) => ({
+                    ...item,
+                    id: item.id || `action-${newMeetingData.id}-${i}`,
+                    description: item.description || item.text || 'Action Item',
+                    type: item.type || 'task'
+                })),
                 followUps: [],
                 documents: [],
                 transcript: [{ speaker: 'Transcript', text: transcriptText, timestamp: 0 }]

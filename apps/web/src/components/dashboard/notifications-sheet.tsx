@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Bell, CheckCheck, Loader2, RefreshCw } from 'lucide-react';
+import { Bell, CheckCheck, Loader2, RefreshCw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
     Sheet,
@@ -90,6 +90,16 @@ export function NotificationsSheet() {
         } catch (e) { }
     };
 
+    const clearAll = async () => {
+        setUpdates([]);
+        setUnreadCount(0);
+        try {
+            await axios.post(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/updates/dismiss-all`, {}, {
+                headers: { 'x-user-id': 'default-user-id' }
+            });
+        } catch (e) { }
+    };
+
     return (
         <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
@@ -110,33 +120,52 @@ export function NotificationsSheet() {
                 </button>
             </SheetTrigger>
             <SheetContent className="w-full sm:max-w-md flex flex-col h-full bg-background/95 backdrop-blur-xl border-l">
-                <SheetHeader className="flex-none pb-4 border-b">
+                <SheetHeader className="flex-none px-6 py-4 border-b bg-muted/5">
                     <div className="flex items-center justify-between">
-                        <SheetTitle className="flex items-center gap-2">
-                            Notifications
+                        <div className="flex items-center gap-2.5">
+                            <SheetTitle className="text-lg font-semibold tracking-tight">
+                                Notifications
+                            </SheetTitle>
                             {unreadCount > 0 && (
-                                <span className="bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-xs px-2 py-0.5 rounded-full font-medium">
-                                    {unreadCount} new
+                                <span className="flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-[10px] font-bold leading-none text-white bg-red-500 rounded-full shadow-sm">
+                                    {unreadCount}
                                 </span>
                             )}
-                        </SheetTitle>
-                        <div className="flex gap-1">
+                        </div>
+                        <div className="flex items-center gap-1">
+                            {unreadCount > 0 && (
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={markAllRead}
+                                    className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                                    title="Mark all as read"
+                                >
+                                    <CheckCheck className="w-4 h-4" />
+                                </Button>
+                            )}
+                            {updates.length > 0 && (
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={clearAll}
+                                    className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                    title="Clear all notifications"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </Button>
+                            )}
+                            <div className="w-px h-4 bg-border mx-1" />
                             <Button
                                 variant="ghost"
                                 size="icon"
                                 onClick={handleRefresh}
                                 disabled={refreshing}
-                                className="h-8 w-8"
+                                className="h-8 w-8 text-muted-foreground/70"
                                 title="Refresh"
                             >
                                 <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
                             </Button>
-                            {unreadCount > 0 && (
-                                <Button variant="ghost" size="sm" onClick={markAllRead} className="h-8 text-xs">
-                                    <CheckCheck className="w-3.5 h-3.5 mr-1.5" />
-                                    Mark all read
-                                </Button>
-                            )}
                         </div>
                     </div>
                 </SheetHeader>

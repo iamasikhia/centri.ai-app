@@ -188,6 +188,7 @@ export default function DashboardPage() {
     const [syncing, setSyncing] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [selectedRepo, setSelectedRepo] = useState<string>("All");
+    const [timeRange, setTimeRange] = useState<string>("week");
     const [selectedMetric, setSelectedMetric] = useState<DetailedMetric | null>(null);
     // New State for Explanation Modal
     const [explanationMetric, setExplanationMetric] = useState<{
@@ -284,7 +285,7 @@ export default function DashboardPage() {
     useEffect(() => {
         if (status === 'unauthenticated') router.push('/');
         if (status === 'authenticated') fetchData();
-    }, [status]);
+    }, [status, timeRange]);
 
     const fetchData = async () => {
         const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -292,7 +293,7 @@ export default function DashboardPage() {
             setLoading(true);
             // Mock delay
             await new Promise(r => setTimeout(r, 600));
-            const res = await fetch(`${API_URL}/dashboard`, { headers: { 'x-user-id': 'default-user-id' } });
+            const res = await fetch(`${API_URL}/dashboard?range=${timeRange}`, { headers: { 'x-user-id': 'default-user-id' } });
 
             // Fallback for mocked FE if network fails or endpoint doesn't return new format
             let vm: DashboardViewModel;
@@ -350,6 +351,15 @@ export default function DashboardPage() {
                     <p className="text-muted-foreground">{format(new Date(), 'EEEE, MMMM do, yyyy')}</p>
                 </div>
                 <div className="flex items-center gap-3 self-start md:self-auto">
+                    <div className="w-32">
+                        <NativeSelect value={timeRange} onChange={(e) => setTimeRange(e.target.value)}>
+                            <option value="day">Today</option>
+                            <option value="week">This Week</option>
+                            <option value="month">This Month</option>
+                            <option value="year">This Year</option>
+                        </NativeSelect>
+                    </div>
+
                     {viewModel.githubRepositories && viewModel.githubRepositories.length > 0 && (
                         <div className="w-48">
                             <NativeSelect value={selectedRepo} onChange={(e) => setSelectedRepo(e.target.value)}>
@@ -634,6 +644,8 @@ export default function DashboardPage() {
                 onClose={() => setSelectedMetric(null)}
                 metric={selectedMetric}
                 githubData={filteredGithubData}
+                blockers={viewModel?.blockers || []} // Pass Blockers
+                meetings={viewModel?.meetings || []} // Pass Meetings (for decisions)
             />
             {explanationMetric && (
                 <MetricExplanationModal

@@ -97,6 +97,17 @@ export class IntegrationsService {
     // Assuming tokens object has access_token, refresh_token
     const encryptedBlob = this.encryption.encrypt(JSON.stringify(tokens));
 
+    // Ensure User Exists
+    await this.prisma.user.upsert({
+      where: { id: userId },
+      update: {},
+      create: {
+        id: userId,
+        email: 'manager@centri.ai', // Default for MVP
+        name: 'Manager One',
+      }
+    });
+
     await this.prisma.integrations.upsert({
       where: {
         userId_provider: {
@@ -123,6 +134,17 @@ export class IntegrationsService {
     if (!provider) throw new NotFoundException('Provider not found');
 
     const encryptedBlob = this.encryption.encrypt(JSON.stringify(tokens));
+
+    // Ensure User Exists
+    await this.prisma.user.upsert({
+      where: { id: userId },
+      update: {},
+      create: {
+        id: userId,
+        email: 'manager@centri.ai', // Default for MVP
+        name: 'Manager One',
+      }
+    });
 
     await this.prisma.integrations.upsert({
       where: {

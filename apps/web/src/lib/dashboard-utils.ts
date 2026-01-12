@@ -38,6 +38,8 @@ export interface Meeting {
     type?: 'meeting' | 'task';
     confidence?: number;
     reason?: string;
+    decisions?: string[];
+    blockers?: string[];
 }
 
 
@@ -158,6 +160,7 @@ export interface DashboardViewModel {
     upcomingMeetings: Meeting[];
     githubRepositories?: string[];
     githubRawData?: { commits: any[], prs: any[], releases: any[] };
+    meetings?: Meeting[];
 }
 
 
@@ -222,7 +225,7 @@ export function groupTasksByUrgency(tasks: Task[], now = new Date()) {
 
 // Main Build Function
 export function buildDashboardViewModel(
-    data: { tasks: Task[], meetings: Meeting[], people: Person[], updates?: any[], lastSyncedAt?: string, githubIntelligence?: any },
+    data: { tasks: Task[], meetings: Meeting[], people: Person[], updates?: any[], lastSyncedAt?: string, githubIntelligence?: any, totalDecisions?: number, totalBlockers?: number },
     now = new Date()
 ): DashboardViewModel {
 
@@ -341,20 +344,20 @@ export function buildDashboardViewModel(
     baseMetrics.splice(2, 0, {
         id: 'blocked-items',
         title: 'Blockers',
-        value: blockedTasks.length,
+        value: (data.totalBlockers !== undefined) ? data.totalBlockers : blockedTasks.length,
         description: 'Discussions from Meetings',
-        trendLabel: blockedTasks.length > 0 ? 'Needs Attention' : 'Clear',
-        trendDirection: blockedTasks.length > 0 ? 'down' : 'up'
+        trendLabel: (data.totalBlockers || blockedTasks.length) > 0 ? 'Needs Attention' : 'Clear',
+        trendDirection: (data.totalBlockers || blockedTasks.length) > 0 ? 'down' : 'up'
     });
 
     // Add Decisions context (Mocked for now as we don't have this source yet)
     baseMetrics.push({
         id: 'decisions',
         title: 'Product Decisions',
-        value: 0,
+        value: data.totalDecisions || 0,
         description: 'Discussions from Meetings',
-        trendLabel: '-',
-        trendDirection: 'flat'
+        trendLabel: 'Saved',
+        trendDirection: 'up'
     });
 
     const executive: ExecutiveMetrics = { metrics: baseMetrics };
@@ -484,7 +487,8 @@ export function buildDashboardViewModel(
         nextMeetingBrief,
         upcomingMeetings: upcomingMeetings.slice(0, 5),
         githubRepositories: gh ? gh.repositories : [],
-        githubRawData: gh ? gh.rawData : undefined
+        githubRawData: gh ? gh.rawData : undefined,
+        meetings: data.meetings, // Pass through the full meetings list (which should include decisions/blockers from backend)
     };
 }
 

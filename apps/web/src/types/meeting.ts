@@ -1,5 +1,5 @@
 
-export type MeetingStatus = 'processed' | 'needs-review' | 'new';
+export type MeetingStatus = 'processed' | 'needs-review' | 'new' | 'processing' | 'failed';
 export type MeetingSource = 'Zoom' | 'Google Meet' | 'Microsoft Teams' | 'Upload' | 'Integration';
 export type MeetingType = '1:1' | 'Team Sync' | 'Stakeholder Review' | 'Sales Call' | 'Workshop';
 export type ActionType = 'follow-up' | 'create-doc' | 'schedule-meeting' | 'reach-out';
