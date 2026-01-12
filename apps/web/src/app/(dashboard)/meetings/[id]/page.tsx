@@ -36,8 +36,38 @@ export default function MeetingDetailPage({ params }: { params: { id: string } }
                         status: (m.processingStatus as any) || 'processed',
                         summary: m.summary || 'No summary available.',
                         keyTakeaways: m.highlightsJson ? JSON.parse(m.highlightsJson) : [],
-                        decisions: [],
-                        actionItems: m.actionItemsJson ? JSON.parse(m.actionItemsJson) : [],
+                        decisions: (m.decisionsJson ? JSON.parse(m.decisionsJson) : []).map((d: any, i: number) => {
+                            if (typeof d === 'string') {
+                                return {
+                                    id: `dec-${m.id}-${i}`,
+                                    text: d,
+                                    timestamp: 0,
+                                    category: 'General'
+                                };
+                            }
+                            return {
+                                ...d,
+                                id: d.id || `dec-${m.id}-${i}`,
+                                text: d.text || d.description || 'Decision'
+                            };
+                        }),
+                        actionItems: (m.actionItemsJson ? JSON.parse(m.actionItemsJson) : []).map((item: any, i: number) => {
+                            if (typeof item === 'string') {
+                                return {
+                                    id: `action-${m.id}-${i}`,
+                                    description: item,
+                                    type: 'task',
+                                    owner: 'User',
+                                    dueDate: null
+                                };
+                            }
+                            return {
+                                ...item,
+                                id: item.id || `action-${m.id}-${i}`,
+                                description: item.description || item.text || 'Action Item',
+                                type: item.type || 'task'
+                            };
+                        }),
                         followUps: [],
                         documents: [],
                         transcript: m.transcriptJson

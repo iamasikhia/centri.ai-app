@@ -759,6 +759,33 @@ If the 'REAL DATA' object is empty or missing the requested info, explicitly sta
             }
         }
 
+        // --- Stakeholders ---
+        if (topic === 'stakeholder' || topic === 'general') {
+            try {
+                this.logger.log('Fetching Stakeholder data...');
+                const stakeholders = await this.prisma.stakeholder.findMany({
+                    where: { userId },
+                    orderBy: { nextReachOutAt: 'asc' },
+                    take: 10
+                });
+
+                if (stakeholders.length > 0) {
+                    integrationData.stakeholders = stakeholders.map(s => ({
+                        name: s.name,
+                        role: s.role,
+                        organization: s.organization,
+                        email: s.email,
+                        next_reach_out: s.nextReachOutAt,
+                        last_contacted: s.lastContactedAt,
+                        notes: s.notes
+                    }));
+                    this.logger.log(`Found ${stakeholders.length} stakeholders`);
+                }
+            } catch (e) {
+                this.logger.error(`Exception fetching stakeholders for user ${userId}`, e);
+            }
+        }
+
         // --- DASHBOARD DATA (Core Intelligence) ---
         // Fetch if topic is dashboard-related OR general, as this provides crucial context like "Blockers"
         if (topic === 'dashboard' || topic === 'general' || topic === 'tasks' || topic === 'blockers' || topic === 'risks') {
@@ -799,6 +826,7 @@ If the 'REAL DATA' object is empty or missing the requested info, explicitly sta
         if (q.includes('github') || q.includes('pr') || q.includes('issue') || q.includes('code') || q.includes('repo') || q.includes('commit')) return 'github';
         if (q.includes('email') || q.includes('gmail') || q.includes('inbox') || q.includes('unread')) return 'email';
         if (q.includes('transcript') || q.includes('recording') || q.includes('fathom') || q.includes('call summary')) return 'transcript';
+        if (q.includes('stakeholder') || q.includes('client') || q.includes('contact') || q.includes('partner')) return 'stakeholder';
 
         // Dashboard specific keywords
         if (q.includes('dashboard') || q.includes('blocker') || q.includes('risk') || q.includes('attention') || q.includes('task') || q.includes('overview') || q.includes('stats') || q.includes('progress')) return 'dashboard';

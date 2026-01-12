@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Bell, CheckCheck, Loader2 } from 'lucide-react';
+import { Bell, CheckCheck, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
     Sheet,
@@ -20,26 +20,40 @@ export function NotificationsSheet() {
     const [updates, setUpdates] = useState<UpdateItem[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [loading, setLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
 
     // Poll for unread count
-    useEffect(() => {
-        const fetchUpdates = async () => {
-            try {
-                const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-                const res = await axios.get(`${API_URL}/updates`, {
-                    headers: { 'x-user-id': 'default-user-id' }
-                });
-                if (res.data) {
-                    setUpdates(res.data);
-                    setUnreadCount(res.data.filter((u: any) => !u.isRead).length);
-                }
-            } catch (e) { }
-        };
+    const fetchUpdates = async () => {
+        try {
+            const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+            const res = await axios.get(`${API_URL}/updates`, {
+                headers: { 'x-user-id': 'default-user-id' }
+            });
+            if (res.data) {
+                setUpdates(res.data);
+                setUnreadCount(res.data.filter((u: any) => !u.isRead).length);
+            }
+        } catch (e) { }
+    };
 
+    useEffect(() => {
         fetchUpdates();
         const interval = setInterval(fetchUpdates, 10000); // 10s polling
         return () => clearInterval(interval);
     }, []);
+
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        try {
+            await axios.post(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/updates/refresh`, {}, {
+                headers: { 'x-user-id': 'default-user-id' }
+            });
+            await fetchUpdates();
+        } catch (e) {
+        } finally {
+            setRefreshing(false);
+        }
+    };
 
     const handleMarkRead = async (id: string) => {
         setUpdates(prev => prev.map(u => u.id === id ? { ...u, isRead: true } : u));
@@ -106,12 +120,24 @@ export function NotificationsSheet() {
                                 </span>
                             )}
                         </SheetTitle>
-                        {unreadCount > 0 && (
-                            <Button variant="ghost" size="sm" onClick={markAllRead} className="h-8 text-xs">
-                                <CheckCheck className="w-3.5 h-3.5 mr-1.5" />
-                                Mark all read
+                        <div className="flex gap-1">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={handleRefresh}
+                                disabled={refreshing}
+                                className="h-8 w-8"
+                                title="Refresh"
+                            >
+                                <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
                             </Button>
-                        )}
+                            {unreadCount > 0 && (
+                                <Button variant="ghost" size="sm" onClick={markAllRead} className="h-8 text-xs">
+                                    <CheckCheck className="w-3.5 h-3.5 mr-1.5" />
+                                    Mark all read
+                                </Button>
+                            )}
+                        </div>
                     </div>
                 </SheetHeader>
 

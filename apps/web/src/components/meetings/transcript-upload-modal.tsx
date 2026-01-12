@@ -19,72 +19,83 @@ export function TranscriptUploadModal({ open, onClose, onUpload }: TranscriptUpl
     const [transcriptText, setTranscriptText] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
 
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const text = event.target?.result;
+            if (typeof text === 'string') {
+                setTranscriptText(text);
+                // Auto-set title if empty
+                if (!title) {
+                    setTitle(file.name.replace(/\.[^/.]+$/, ""));
+                }
+            }
+        };
+        reader.readAsText(file);
+    };
+
     const handleProcess = async () => {
         if (!title || !transcriptText) return;
 
         setIsProcessing(true);
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-        // Simulate AI Processing time
-        await new Promise(r => setTimeout(r, 1500));
+        try {
+            const res = await fetch(`${API_URL}/meetings`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-id': 'default-user-id' // Should ideally allow configurable user ID
+                },
+                body: JSON.stringify({
+                    title,
+                    date: new Date().toISOString(),
+                    transcript: transcriptText
+                })
+            });
 
-        // 1. Parse Transcript (Simple mock parser)
-        // Assumes "Speaker: Text" format or just newlines
-        const lines = transcriptText.split('\n').filter(l => l.trim());
-        const transcript: TranscriptSegment[] = lines.map((line, i) => {
-            const parts = line.split(':');
-            const speaker = parts.length > 1 ? parts[0].trim() : 'Unknown Speaker';
-            const text = parts.length > 1 ? parts.slice(1).join(':').trim() : line;
-            return {
-                speaker,
-                text,
-                timestamp: i * 30, // Mock 30s increments
-                isHighlighted: text.toLowerCase().includes('decision') || text.toLowerCase().includes('action')
+            if (!res.ok) {
+                throw new Error('Failed to upload transcript');
+                // In a real app, show error toast
+            }
+
+            const newMeetingData = await res.json();
+
+            // Map backend response to frontend Meeting type
+            // Note: The analysis starts in background, so initial details might be empty.
+            // But title, date, id will be correct.
+            const newMeeting: Meeting = {
+                id: newMeetingData.id,
+                title: newMeetingData.title,
+                date: new Date(newMeetingData.startTime),
+                durationMinutes: 60,
+                source: 'Upload',
+                type: 'Team Sync',
+                status: 'processing', // Indicate it's being analyzed
+                participants: [],
+                summary: 'Processing AI analysis...', // Placeholder until viewed/refreshed
+                keyTakeaways: [],
+                decisions: [],
+                actionItems: [],
+                followUps: [],
+                documents: [],
+                transcript: [{ speaker: 'Transcript', text: transcriptText, timestamp: 0 }]
             };
-        });
 
-        // 2. Generate Mock Intelligence
-        const newMeeting: Meeting = {
-            id: `m-${Date.now()}`,
-            title,
-            date: new Date(),
-            durationMinutes: Math.max(15, lines.length * 2),
-            source: 'Upload',
-            type: 'Team Sync',
-            status: 'processed',
-            participants: [
-                { name: 'You', email: 'you@company.com', role: 'User' },
-                { name: 'Team Member', email: 'member@company.com', role: 'Staff' }
-            ],
-            summary: `This meeting focused on "${title}". Key points included reviewing current progress and establishing next steps based on the uploaded transcript.`,
-            keyTakeaways: [
-                'Transcript successfully uploaded and processed.',
-                'Action items identified from context.', // Mock
-                'Next steps clarified.'
-            ],
-            decisions: [
-                { id: `d-${Date.now()}`, text: 'Proceed with the plan as discussed in the transcript.', timestamp: 60 }
-            ],
-            actionItems: [
-                {
-                    id: `a-${Date.now()}`,
-                    description: 'Review the full transcript details',
-                    owner: 'You',
-                    type: 'create-doc',
-                    status: 'pending',
-                    priority: 'medium',
-                    dueDate: new Date()
-                }
-            ],
-            followUps: [],
-            documents: [],
-            transcript
-        };
+            onUpload(newMeeting);
+            setTitle('');
+            setTranscriptText('');
+            onClose();
 
-        onUpload(newMeeting);
-        setIsProcessing(false);
-        setTitle('');
-        setTranscriptText('');
-        onClose();
+        } catch (error) {
+            console.error("Upload error:", error);
+            // In a real app, show error state
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     return (
@@ -92,7 +103,7 @@ export function TranscriptUploadModal({ open, onClose, onUpload }: TranscriptUpl
             open={open}
             onClose={onClose}
             title="Upload Transcript"
-            description="Paste your meeting transcript below. We'll extract actionable intelligence."
+            description="Paste your meeting transcript or upload a file below. We'll extract actionable intelligence."
             maxWidth="max-w-2xl"
         >
             <div className="space-y-6 py-2">
@@ -108,7 +119,19 @@ export function TranscriptUploadModal({ open, onClose, onUpload }: TranscriptUpl
                 <div className="space-y-2">
                     <Label className="flex items-center justify-between">
                         <span>Transcript Text</span>
-                        <span className="text-xs text-muted-foreground font-normal">Supports "Speaker: Message" format</span>
+                        <div className="flex items-center gap-2">
+                            <Label htmlFor="file-upload" className="cursor-pointer text-xs flex items-center gap-1 text-primary hover:underline">
+                                <UploadCloud className="w-3 h-3" />
+                                Upload File (.txt, .md, .vtt)
+                            </Label>
+                            <Input
+                                id="file-upload"
+                                type="file"
+                                accept=".txt,.md,.vtt"
+                                className="hidden"
+                                onChange={handleFileChange}
+                            />
+                        </div>
                     </Label>
                     <div className="relative">
                         <Textarea
@@ -117,11 +140,6 @@ export function TranscriptUploadModal({ open, onClose, onUpload }: TranscriptUpl
                             value={transcriptText}
                             onChange={e => setTranscriptText(e.target.value)}
                         />
-                        <div className="absolute bottom-3 right-3">
-                            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground">
-                                <FileText className="w-4 h-4" />
-                            </Button>
-                        </div>
                     </div>
                 </div>
 

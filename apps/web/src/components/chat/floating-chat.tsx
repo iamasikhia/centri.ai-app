@@ -15,7 +15,7 @@ import {
     Send, Loader2, Sparkles, Bot, User,
     Calendar, MessageSquare, Github, FileText, Video,
     ThumbsUp, ThumbsDown, Copy, Check, ArrowRight,
-    HelpCircle
+    HelpCircle, Trash2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
@@ -76,6 +76,10 @@ export function FloatingChat() {
     };
 
     const context = getContext();
+
+    const handleClear = () => {
+        setMessages([]);
+    };
 
     const handleSend = async (textOverride?: string) => {
         const text = textOverride || input;
@@ -153,18 +157,29 @@ export function FloatingChat() {
             </SheetTrigger>
             <SheetContent side="right" className="w-full sm:max-w-md flex flex-col p-0 h-full">
                 <SheetHeader className="px-6 py-4 border-b bg-muted/10">
-                    <SheetTitle className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-violet-500 to-fuchsia-500 flex items-center justify-center text-white shadow-sm">
-                            <Sparkles className="w-4 h-4" />
-                        </div>
-                        <div className="flex flex-col items-start">
-                            <span>Centri Assistant</span>
-                            <span className="text-[10px] font-normal text-muted-foreground flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                {context}
-                            </span>
-                        </div>
-                    </SheetTitle>
+                    <div className="flex items-center justify-between w-full">
+                        <SheetTitle className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-violet-500 to-fuchsia-500 flex items-center justify-center text-white shadow-sm">
+                                <Sparkles className="w-4 h-4" />
+                            </div>
+                            <div className="flex flex-col items-start">
+                                <span>Centri Assistant</span>
+                                <span className="text-[10px] font-normal text-muted-foreground flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                    {context}
+                                </span>
+                            </div>
+                        </SheetTitle>
+                        {messages.length > 0 && (
+                            <button
+                                onClick={handleClear}
+                                className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+                                title="Clear chat"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        )}
+                    </div>
                     <SheetDescription className="sr-only">
                         AI Assistant for {context}
                     </SheetDescription>

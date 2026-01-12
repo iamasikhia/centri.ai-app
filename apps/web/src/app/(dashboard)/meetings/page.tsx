@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -6,20 +5,23 @@ import { MOCK_MEETINGS } from '@/lib/mock-meetings';
 import { MeetingsList } from '@/components/meetings/meetings-list';
 import { TranscriptUploadModal } from '@/components/meetings/transcript-upload-modal';
 import { TranscriptImportModal } from '@/components/meetings/transcript-import-modal';
-import { Meeting, MeetingStatus } from '@/types/meeting';
-import { Mic, Search, RefreshCw } from 'lucide-react';
+import { Meeting } from '@/types/meeting';
+import { Mic, Search, RefreshCw, Calendar, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
+import { format } from 'date-fns';
 
 export default function MeetingsPage() {
-    const [filter, setFilter] = useState<'all' | 'upcoming' | 'past'>('all'); // Reformatted by Antigravity
     const [meetings, setMeetings] = useState<Meeting[]>([]);
     const [isUploadOpen, setIsUploadOpen] = useState(false);
     const [isImportOpen, setIsImportOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [isSyncing, setIsSyncing] = useState(false);
-
-
     const [calendarState, setCalendarState] = useState<'loading' | 'connected' | 'disconnected' | 'error'>('loading');
+
+    // Default tab
+    const [activeTab, setActiveTab] = useState<string>('upcoming');
 
     const fetchStatus = useCallback(async () => {
         const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -54,8 +56,8 @@ export default function MeetingsPage() {
                     date: new Date(m.startTime),
                     durationMinutes: Math.floor((new Date(m.endTime).getTime() - new Date(m.startTime).getTime()) / 60000),
                     participants: m.attendeesJson ? JSON.parse(m.attendeesJson) : [],
-                    source: (m.videoProvider === 'fathom' ? 'Zoom' : m.videoProvider) as any || 'Integration', // Cast to any to bypass strict check for now
-                    type: 'Team Sync', // Default
+                    source: (m.videoProvider === 'fathom' ? 'Zoom' : m.videoProvider) as any || 'Integration',
+                    type: 'Team Sync',
                     status: 'processed',
                     summary: m.summary || 'No summary available.',
                     keyTakeaways: m.highlightsJson ? JSON.parse(m.highlightsJson) : [],
@@ -77,7 +79,6 @@ export default function MeetingsPage() {
         }
     }, []);
 
-    // Initial Load
     useEffect(() => {
         fetchStatus().then(() => {
             fetchMeetings();
@@ -100,7 +101,6 @@ export default function MeetingsPage() {
         }
     };
 
-    // Save on Change
     useEffect(() => {
         if (!isLoading && meetings.length > 0) {
             localStorage.setItem('centri_meetings', JSON.stringify(meetings));
@@ -112,7 +112,6 @@ export default function MeetingsPage() {
     };
 
     const handleImport = (platform: string) => {
-        // Mock imported meeting
         const newMeeting: Meeting = {
             id: `imp-${Date.now()}`,
             title: `Weekly Sync (${platform})`,
@@ -134,16 +133,24 @@ export default function MeetingsPage() {
     };
 
     // Sort by date desc
-    const sorted = [...meetings].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const sortedMeetings = [...meetings].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    const filtered = sorted.filter(m => {
-        const now = new Date();
-        const meetingDate = new Date(m.date);
-        if (filter === 'all') return true;
-        if (filter === 'upcoming') return meetingDate > now;
-        if (filter === 'past') return meetingDate <= now;
-        return true;
-    });
+    // Filter Logic
+    const now = new Date();
+    const upcomingMeetings = sortedMeetings.filter(m => new Date(m.date) > now).reverse(); // Ascending for upcoming
+    const pastMeetings = sortedMeetings.filter(m => new Date(m.date) <= now);
+
+    // Group Past Meetings by Month
+    const groupedPastMeetings = pastMeetings.reduce((groups, meeting) => {
+        const monthYear = format(new Date(meeting.date), 'MMMM yyyy');
+        if (!groups[monthYear]) {
+            groups[monthYear] = [];
+        }
+        groups[monthYear].push(meeting);
+        return groups;
+    }, {} as Record<string, Meeting[]>);
+
+    const pastMonths = Object.keys(groupedPastMeetings);
 
     if (isLoading) {
         return <div className="p-10 text-center text-muted-foreground">Loading meetings...</div>;
@@ -180,37 +187,29 @@ export default function MeetingsPage() {
                 </div>
             </div>
 
-            {/* Filters */}
-            <div className="flex items-end gap-4 mb-6 border-b overflow-x-auto">
-                {(['all', 'upcoming', 'past'] as const).map((tab) => (
-                    <button
-                        key={tab}
-                        onClick={() => setFilter(tab)}
-                        className={`
-                            px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
-                            ${filter === tab
-                                ? 'border-primary text-primary'
-                                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
-                            }
-                        `}
-                    >
-                        {tab === 'all' ? 'All Meetings' : tab === 'upcoming' ? 'Upcoming' : 'Past Meetings'}
-                        <span className="ml-2 text-xs bg-muted px-1.5 py-0.5 rounded-full opacity-70">
-                            {tab === 'all'
-                                ? meetings.length
-                                : meetings.filter(m => {
-                                    const now = new Date();
-                                    const meetingDate = new Date(m.date);
-                                    if (tab === 'upcoming') return meetingDate > now;
-                                    if (tab === 'past') return meetingDate <= now;
-                                    return false;
-                                }).length
-                            }
-                        </span>
-                    </button>
-                ))}
+            <Tabs defaultValue="upcoming" value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1">
+                <div className="flex items-center justify-between mb-6">
+                    <TabsList className="grid w-[400px] grid-cols-3">
+                        <TabsTrigger value="upcoming" className="gap-2">
+                            Upcoming
+                            <span className="ml-1.5 text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">
+                                {upcomingMeetings.length}
+                            </span>
+                        </TabsTrigger>
+                        <TabsTrigger value="past" className="gap-2">
+                            Past
+                            <span className="ml-1.5 text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">
+                                {pastMeetings.length}
+                            </span>
+                        </TabsTrigger>
+                        <TabsTrigger value="all" className="gap-2">
+                            All
+                            <span className="ml-1.5 text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">
+                                {meetings.length}
+                            </span>
+                        </TabsTrigger>
+                    </TabsList>
 
-                <div className="ml-auto flex items-center gap-2">
                     <div className="relative hidden sm:block">
                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                         <input
@@ -220,9 +219,51 @@ export default function MeetingsPage() {
                         />
                     </div>
                 </div>
-            </div>
 
-            <MeetingsList meetings={filtered} isCalendarConnected={calendarState === 'connected'} />
+                <TabsContent value="upcoming" className="flex-1 mt-0">
+                    {upcomingMeetings.length > 0 ? (
+                        <MeetingsList meetings={upcomingMeetings} isCalendarConnected={calendarState === 'connected'} />
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-64 border rounded-xl bg-muted/5 border-dashed">
+                            <Calendar className="w-10 h-10 text-muted-foreground/30 mb-3" />
+                            <p className="text-muted-foreground font-medium">No upcoming meetings scheduled</p>
+                            <p className="text-sm text-muted-foreground/60 mt-1">Check back later or sync your calendar</p>
+                        </div>
+                    )}
+                </TabsContent>
+
+                <TabsContent value="past" className="flex-1 mt-0">
+                    {pastMeetings.length > 0 ? (
+                        <Accordion type="single" collapsible defaultValue={pastMonths[0]} className="space-y-4">
+                            {pastMonths.map(month => (
+                                <AccordionItem key={month} value={month} className="border rounded-lg bg-card px-4">
+                                    <AccordionTrigger className="hover:no-underline">
+                                        <div className="flex items-center gap-2">
+                                            <Calendar className="w-4 h-4 text-muted-foreground" />
+                                            <span className="text-base font-semibold">{month}</span>
+                                            <span className="ml-2 text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">
+                                                {groupedPastMeetings[month].length}
+                                            </span>
+                                        </div>
+                                    </AccordionTrigger>
+                                    <AccordionContent className="pt-2 pb-4">
+                                        <MeetingsList meetings={groupedPastMeetings[month]} isCalendarConnected={calendarState === 'connected'} />
+                                    </AccordionContent>
+                                </AccordionItem>
+                            ))}
+                        </Accordion>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-64 border rounded-xl bg-muted/5 border-dashed">
+                            <History className="w-10 h-10 text-muted-foreground/30 mb-3" />
+                            <p className="text-muted-foreground font-medium">No past meetings found</p>
+                        </div>
+                    )}
+                </TabsContent>
+
+                <TabsContent value="all" className="flex-1 mt-0">
+                    <MeetingsList meetings={sortedMeetings} isCalendarConnected={calendarState === 'connected'} />
+                </TabsContent>
+            </Tabs>
 
             <TranscriptUploadModal
                 open={isUploadOpen}

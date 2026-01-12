@@ -132,31 +132,39 @@ export class FathomProvider implements IProvider {
                 let fullTranscriptText = '';
 
                 try {
-                    let transcriptData = await this.getTranscript(tokens, meetingId);
+                    // Use recording_id if available, otherwise try meetingId
+                    const recordingId = meetingDetails.recording_id || meetingDetails.id || meetingId;
 
-                    if (Array.isArray(transcriptData)) {
-                        transcriptSegments = transcriptData.map((t: any) => ({
-                            speaker: t.speaker_name || t.speaker?.display_name || 'Unknown',
-                            text: t.text,
-                            timestamp: t.timestamp || 0,
-                            isHighlighted: false
-                        }));
-                        fullTranscriptText = transcriptSegments.map(t => `${t.speaker}: ${t.text}`).join('\n');
-                    } else if (transcriptData && Array.isArray(transcriptData.transcript)) {
-                        transcriptSegments = transcriptData.transcript.map((t: any) => ({
-                            speaker: t.speaker?.display_name || t.speaker_name || 'Unknown',
-                            text: t.text,
-                            timestamp: t.timestamp || 0,
-                            isHighlighted: false
-                        }));
-                        fullTranscriptText = transcriptSegments.map(t => `${t.speaker}: ${t.text}`).join('\n');
-                    } else if (transcriptData && typeof transcriptData.transcript === 'string') {
-                        // Handle plain text
-                        fullTranscriptText = transcriptData.transcript;
+                    if (!recordingId) {
+                        console.warn(`[Fathom] No recording ID found for meeting ${meetingId}`);
+                    } else {
+                        let transcriptData = await this.getTranscript(tokens, recordingId);
+
+                        if (Array.isArray(transcriptData)) {
+                            transcriptSegments = transcriptData.map((t: any) => ({
+                                speaker: t.speaker_name || t.speaker?.display_name || 'Unknown',
+                                text: t.text,
+                                timestamp: t.timestamp || 0,
+                                isHighlighted: false
+                            }));
+                            fullTranscriptText = transcriptSegments.map(t => `${t.speaker}: ${t.text}`).join('\n');
+                        } else if (transcriptData && Array.isArray(transcriptData.transcript)) {
+                            transcriptSegments = transcriptData.transcript.map((t: any) => ({
+                                speaker: t.speaker?.display_name || t.speaker_name || 'Unknown',
+                                text: t.text,
+                                timestamp: t.timestamp || 0,
+                                isHighlighted: false
+                            }));
+                            fullTranscriptText = transcriptSegments.map(t => `${t.speaker}: ${t.text}`).join('\n');
+                        } else if (transcriptData && typeof transcriptData.transcript === 'string') {
+                            // Handle plain text
+                            fullTranscriptText = transcriptData.transcript;
+                        }
                     }
 
                 } catch (e) {
-                    console.warn(`[Fathom] Transcript not ready or failed for ${meetingId}`, e.message);
+                    console.warn(`[Fathom] Transcript fetch failed for ${meetingId} (recId: ${meetingDetails.recording_id}). Error: ${e.message}`);
+                    // Fallback: If transcript fails, maybe we have valid summary/highlights from meetingDetails that are enough
                 }
                 console.log(`[Fathom] Processed ${meetingId}: text len=${fullTranscriptText.length}, segments=${transcriptSegments.length}`);
 

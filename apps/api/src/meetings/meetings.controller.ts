@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Headers, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Headers, UnauthorizedException } from '@nestjs/common';
 import { MeetingsService } from './meetings.service';
 
 @Controller('meetings')
@@ -15,5 +15,11 @@ export class MeetingsController {
     async findOne(@Headers('x-user-id') userId: string, @Param('id') id: string) {
         if (!userId) throw new UnauthorizedException('User ID required');
         return this.meetingsService.findOne(id, userId);
+    }
+
+    @Post()
+    async create(@Headers('x-user-id') userId: string, @Body() body: { title: string; date: string; transcript: string }) {
+        if (!userId) throw new UnauthorizedException('User ID required');
+        return this.meetingsService.create(userId, body);
     }
 }

@@ -32,9 +32,9 @@ const getSourceIcon = (source: string) => {
 
 const getSeverityStyles = (severity: string) => {
     switch (severity) {
-        case 'urgent': return 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900/30';
-        case 'important': return 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/30';
-        default: return 'bg-card border-border/50 hover:bg-muted/50';
+        case 'urgent': return 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900/40 hover:bg-red-100/50 dark:hover:bg-red-900/20';
+        case 'important': return 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-900/40 hover:bg-amber-100/50 dark:hover:bg-amber-900/20';
+        default: return 'bg-card dark:bg-zinc-900 border-border/60 hover:bg-muted/40';
     }
 };
 

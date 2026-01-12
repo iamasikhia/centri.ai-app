@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EncryptionService } from '../encryption/encryption.service';
 import { ConfigService } from '@nestjs/config';
+import { EmailService } from '../email/email.service';
 import axios from 'axios';
 import { UpdateItem } from '@prisma/client';
 
@@ -11,7 +12,8 @@ export class UpdatesService {
     constructor(
         private prisma: PrismaService,
         private encryption: EncryptionService,
-        private config: ConfigService
+        private config: ConfigService,
+        private emailService: EmailService
     ) { }
 
     async refreshUpdates(userId: string) {
@@ -94,6 +96,32 @@ export class UpdatesService {
             updates.push(...stakeholderUpdates);
         } catch (e) {
             console.error('Task/Stakeholder collect error', e);
+        }
+
+        // Email Notification Logic
+        const highPriority = updates.filter(u => u.severity === 'urgent' || u.severity === 'important');
+        if (highPriority.length > 0) {
+            try {
+                // Check which ones are ALREADY in DB to avoid spamming
+                const existing = await this.prisma.updateItem.findMany({
+                    where: {
+                        userId,
+                        externalId: { in: highPriority.map(u => u.externalId) }
+                    },
+                    select: { externalId: true }
+                });
+                const existingIds = new Set(existing.map(e => e.externalId));
+                const newHighPriority = highPriority.filter(u => !existingIds.has(u.externalId));
+
+                if (newHighPriority.length > 0) {
+                    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+                    if (user && user.email) {
+                        this.emailService.sendUpdateEmail(user.email, newHighPriority);
+                    }
+                }
+            } catch (e) {
+                console.error('Email check failed', e);
+            }
         }
 
         // Upsert logic
