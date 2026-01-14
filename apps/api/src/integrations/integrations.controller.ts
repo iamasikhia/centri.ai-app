@@ -31,13 +31,12 @@ export class IntegrationsController {
     async callback(
         @Param('provider') provider: string,
         @Query('code') code: string,
+        @Query('state') state: string,
         @Res() res: Response
     ) {
-        // In callback, we usually don't have the user ID easily unless using state param.
-        // I'll assume a single user 'default-user-id' for the MVP callback flow if state is missing,
-        // OR better, encoded in state.
-        // For this MVP, I will hardcode userId 'default-user-id' to keep it simple as requested "no user questions".
-        const userId = 'default-user-id';
+        // Retrieve userId from state param (passed during connect)
+        // Fallback to default only if state is missing (legacy/direct hit)
+        const userId = state ? decodeURIComponent(state) : 'default-user-id';
 
         try {
             console.log(`[${provider}] OAuth callback received`);
@@ -65,6 +64,11 @@ export class IntegrationsController {
     async sync(@Req() req) {
         const userId = req.headers['x-user-id'] || 'default-user-id';
         return this.integrationsService.sync(userId);
+    }
+
+    @Get('config')
+    async getConfig() {
+        return this.integrationsService.getAllowedProviders();
     }
 
     @Get('status')

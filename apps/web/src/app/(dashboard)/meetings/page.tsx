@@ -19,6 +19,7 @@ export default function MeetingsPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSyncing, setIsSyncing] = useState(false);
     const [calendarState, setCalendarState] = useState<'loading' | 'connected' | 'disconnected' | 'error'>('loading');
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Default tab
     const [activeTab, setActiveTab] = useState<string>('upcoming');
@@ -135,10 +136,22 @@ export default function MeetingsPage() {
     // Sort by date desc
     const sortedMeetings = [...meetings].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+    // Search filter
+    const filteredMeetings = sortedMeetings.filter(m => {
+        if (!searchQuery.trim()) return true;
+        const query = searchQuery.toLowerCase();
+        const titleMatch = m.title.toLowerCase().includes(query);
+        const summaryMatch = m.summary?.toLowerCase().includes(query);
+        const participantMatch = m.participants?.some(p =>
+            p.name?.toLowerCase().includes(query) || p.email?.toLowerCase().includes(query)
+        );
+        return titleMatch || summaryMatch || participantMatch;
+    });
+
     // Filter Logic
     const now = new Date();
-    const upcomingMeetings = sortedMeetings.filter(m => new Date(m.date) > now).reverse(); // Ascending for upcoming
-    const pastMeetings = sortedMeetings.filter(m => new Date(m.date) <= now);
+    const upcomingMeetings = filteredMeetings.filter(m => new Date(m.date) > now).reverse(); // Ascending for upcoming
+    const pastMeetings = filteredMeetings.filter(m => new Date(m.date) <= now);
 
     // Group Past Meetings by Month
     const groupedPastMeetings = pastMeetings.reduce((groups, meeting) => {
@@ -214,8 +227,10 @@ export default function MeetingsPage() {
                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                         <input
                             type="text"
-                            placeholder="Search transcripts..."
-                            className="bg-muted/50 border-none rounded-lg pl-9 pr-4 py-1.5 text-sm w-48 focus:ring-1 focus:ring-primary focus:bg-background transition-all"
+                            placeholder="Search meetings..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="bg-muted/50 border-none rounded-lg pl-9 pr-4 py-1.5 text-sm w-56 focus:ring-1 focus:ring-primary focus:bg-background focus:w-72 transition-all"
                         />
                     </div>
                 </div>

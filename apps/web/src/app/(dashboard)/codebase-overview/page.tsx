@@ -1,15 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { NativeSelect } from '@/components/ui/native-select';
-import { BookOpen, Sparkles, FileText, AlertCircle, Loader2, FolderTree, Package, GitBranch, Code2, FileCode, Clock, Lightbulb } from 'lucide-react';
+import { BookOpen, Sparkles, FileText, AlertCircle, Loader2, FolderTree, Package, GitBranch, Code2, FileCode, Clock, Lightbulb, MessageCircle, Send, User, Bot } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import ReactMarkdown from 'react-markdown';
 import { MermaidChart } from '@/components/mermaid-chart';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 
 interface CodebaseAnalysis {
     repository: string;
@@ -27,7 +30,7 @@ interface CodebaseAnalysis {
     }>;
 }
 
-type TabType = 'overview' | 'structure' | 'dependencies' | 'documentation' | 'explanation';
+type TabType = 'overview' | 'structure' | 'dependencies' | 'documentation' | 'explanation' | 'ask';
 
 interface CodebaseExplanation {
     productOverview: string;
@@ -43,6 +46,8 @@ interface CodebaseExplanation {
 export default function CodebaseOverviewPage() {
     const { data: session, status } = useSession();
     const router = useRouter();
+
+    const userId = 'default-user-id'; // Use default ID to match existing integrations
 
     // State with sessionStorage persistence
     const [repositories, setRepositories] = useState<Array<{ name: string; fullName: string }>>([]);
@@ -71,13 +76,27 @@ export default function CodebaseOverviewPage() {
     });
 
     const [loadingExplanation, setLoadingExplanation] = useState(false);
+
+    // Report Generation State
+    const [showReportModal, setShowReportModal] = useState(false);
+    const [reportContent, setReportContent] = useState('');
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
+
     const [error, setError] = useState<string | null>(null);
+
+    // Ask Questions State
+    const [questionInput, setQuestionInput] = useState('');
+    const [askingQuestion, setAskingQuestion] = useState(false);
+    const [qaHistory, setQaHistory] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
+    const [followUpSuggestions, setFollowUpSuggestions] = useState<string[]>([]);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const [activeTab, setActiveTab] = useState<TabType>(() => {
         if (typeof window !== 'undefined') {
-            return (sessionStorage.getItem('codebase_activeTab') as TabType) || 'explanation';
+            return (sessionStorage.getItem('codebase_activeTab') as TabType) || 'ask';
         }
-        return 'explanation';
+        return 'ask';
     });
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -101,7 +120,7 @@ export default function CodebaseOverviewPage() {
         setLoadingRepos(true);
         try {
             const res = await fetch(`${API_URL}/codebase/repositories`, {
-                headers: { 'x-user-id': 'default-user-id' }
+                headers: { 'x-user-id': userId }
             });
             const data = await res.json();
 
@@ -130,7 +149,7 @@ export default function CodebaseOverviewPage() {
 
         try {
             const res = await fetch(`${API_URL}/codebase/analyze?repository=${encodeURIComponent(selectedRepo)}`, {
-                headers: { 'x-user-id': 'default-user-id' }
+                headers: { 'x-user-id': userId }
             });
 
             const data = await res.json();
@@ -157,7 +176,7 @@ export default function CodebaseOverviewPage() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'x-user-id': 'default-user-id'
+                    'x-user-id': userId
                 },
                 body: JSON.stringify({ repository: selectedRepo })
             });
@@ -173,6 +192,69 @@ export default function CodebaseOverviewPage() {
             console.error('Failed to fetch explanation', e);
         } finally {
             setLoadingExplanation(false);
+        }
+    };
+
+    const handleGenerateReport = async () => {
+        if (!selectedRepo) return;
+
+        setIsGenerating(true);
+        try {
+            const res = await fetch(`${API_URL}/codebase/report`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+                body: JSON.stringify({
+                    repository: selectedRepo,
+                    includeProductData: true,
+                    action: 'preview'
+                })
+            });
+
+            const data = await res.json();
+            if (data.error) {
+                alert(`Error: ${data.error}`);
+                return;
+            }
+
+            setReportContent(data.content || '');
+        } catch (e: any) {
+            alert('Failed to generate report: ' + e.message);
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
+    const handleExportToGoogleDocs = async () => {
+        if (!reportContent) return;
+
+        setIsExporting(true);
+        try {
+            const res = await fetch(`${API_URL}/codebase/report`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+                body: JSON.stringify({
+                    repository: selectedRepo,
+                    action: 'export',
+                    content: reportContent
+                })
+            });
+
+            const data = await res.json();
+            if (data.error) {
+                alert(`Error: ${data.error}`);
+                return;
+            }
+
+            // Open Google Docs in new tab
+            if (data.url) {
+                window.open(data.url, '_blank');
+                setShowReportModal(false);
+                setReportContent('');
+            }
+        } catch (e: any) {
+            alert('Failed to export: ' + e.message);
+        } finally {
+            setIsExporting(false);
         }
     };
 
@@ -294,6 +376,7 @@ export default function CodebaseOverviewPage() {
                     <div className="border-b">
                         <div className="flex gap-6">
                             {[
+                                { id: 'ask', label: 'Ask Questions', icon: MessageCircle },
                                 { id: 'explanation', label: 'PM Explanation', icon: Lightbulb },
                                 { id: 'overview', label: 'Overview', icon: BookOpen },
                                 { id: 'structure', label: 'File Structure', icon: FolderTree },
@@ -343,6 +426,21 @@ export default function CodebaseOverviewPage() {
                                 </Card>
                             ) : (
                                 <>
+                                    {/* Generate Report Button - Minimalist Design */}
+                                    <div className="flex justify-end mb-4">
+                                        <Button
+                                            onClick={() => {
+                                                setShowReportModal(true);
+                                                setReportContent('');
+                                            }}
+                                            variant="outline"
+                                            className="gap-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-all"
+                                        >
+                                            <Sparkles className="w-4 h-4" />
+                                            Generate Report
+                                        </Button>
+                                    </div>
+
                                     {/* Executive Summary - Highlighted */}
                                     <Card className="border-emerald-200 dark:border-emerald-900/30 bg-gradient-to-br from-emerald-50/50 to-teal-50/50 dark:from-emerald-950/20 dark:to-teal-950/20">
                                         <CardHeader>
@@ -402,6 +500,212 @@ export default function CodebaseOverviewPage() {
                                 </>
                             )}
                         </div>
+                    )}
+
+                    {/* Ask Questions Tab - For Non-Technical PMs */}
+                    {activeTab === 'ask' && (
+                        <Card className="flex flex-col h-[650px]">
+                            <CardHeader className="pb-3 border-b flex flex-row items-start justify-between">
+                                <div>
+                                    <CardTitle className="flex items-center gap-2 text-base">
+                                        <MessageCircle className="w-5 h-5 text-primary" />
+                                        Ask Centri About Your Codebase
+                                    </CardTitle>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        Ask questions in plain language — I'll explain without technical jargon.
+                                        <span className="text-amber-600 dark:text-amber-400 ml-1 font-medium">(Read-only)</span>
+                                    </p>
+                                </div>
+                                {qaHistory.length > 0 && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                            setQaHistory([]);
+                                            setFollowUpSuggestions([]);
+                                        }}
+                                        className="text-xs text-muted-foreground hover:text-foreground"
+                                    >
+                                        Clear chat
+                                    </Button>
+                                )}
+                            </CardHeader>
+                            <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
+                                {/* Q&A History */}
+                                <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
+                                    {qaHistory.length === 0 ? (
+                                        <div className="h-full flex flex-col items-center justify-center text-center p-8">
+                                            <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-violet-500/20 to-fuchsia-500/20 flex items-center justify-center mb-4">
+                                                <Bot className="w-10 h-10 text-primary" />
+                                            </div>
+                                            <h3 className="text-lg font-semibold mb-2">Hi! I'm Centri 👋</h3>
+                                            <p className="text-sm text-muted-foreground max-w-md mb-6">
+                                                I'm here to help you understand your codebase without the tech jargon.
+                                                Ask me anything about what the product does, what the team is building, or potential risks.
+                                            </p>
+                                            <div className="grid grid-cols-2 gap-2 max-w-lg">
+                                                {[
+                                                    "What does this product do in simple terms?",
+                                                    "What are the main features being built?",
+                                                    "Are there any technical risks I should know about?",
+                                                    "What has the team been working on recently?"
+                                                ].map((q, i) => (
+                                                    <button
+                                                        key={i}
+                                                        onClick={() => setQuestionInput(q)}
+                                                        className="px-4 py-3 bg-muted/50 hover:bg-muted border hover:border-primary/30 rounded-xl text-sm text-left transition-all"
+                                                    >
+                                                        {q}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {qaHistory.map((msg, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    className={`flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                                                >
+                                                    {msg.role === 'assistant' && (
+                                                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-violet-500 to-fuchsia-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                                                            <Bot className="w-4 h-4" />
+                                                        </div>
+                                                    )}
+                                                    <div
+                                                        className={`max-w-[85%] px-4 py-3 rounded-2xl shadow-sm ${msg.role === 'user'
+                                                            ? 'bg-primary text-primary-foreground rounded-tr-sm'
+                                                            : 'bg-card border rounded-tl-sm'
+                                                            }`}
+                                                    >
+                                                        <div className="prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-li:my-0">
+                                                            <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                                        </div>
+                                                    </div>
+                                                    {msg.role === 'user' && (
+                                                        <div className="w-8 h-8 rounded-full bg-muted border flex items-center justify-center shrink-0">
+                                                            <User className="w-4 h-4 text-muted-foreground" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+
+                                            {/* Follow-up Suggestions */}
+                                            {!askingQuestion && followUpSuggestions.length > 0 && (
+                                                <div className="flex flex-wrap gap-2 ml-11 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                                                    {followUpSuggestions.map((suggestion, i) => (
+                                                        <button
+                                                            key={i}
+                                                            onClick={() => setQuestionInput(suggestion)}
+                                                            className="px-3 py-1.5 text-xs bg-primary/5 hover:bg-primary/10 border border-primary/20 text-primary rounded-full transition-colors"
+                                                        >
+                                                            {suggestion}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+
+                                    {askingQuestion && (
+                                        <div className="flex gap-3 animate-in fade-in slide-in-from-bottom-2">
+                                            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-violet-500 to-fuchsia-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                                                <Bot className="w-4 h-4" />
+                                            </div>
+                                            <div className="bg-card border rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
+                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                    <div className="flex gap-1">
+                                                        <span className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]" />
+                                                        <span className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]" />
+                                                        <span className="w-2 h-2 bg-primary rounded-full animate-bounce" />
+                                                    </div>
+                                                    <span>Analyzing your codebase...</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div ref={messagesEndRef} />
+                                </div>
+
+                                {/* Input Area */}
+                                <div className="p-4 border-t bg-muted/20">
+                                    <form
+                                        onSubmit={async (e) => {
+                                            e.preventDefault();
+                                            if (!questionInput.trim() || askingQuestion) return;
+
+                                            const question = questionInput;
+                                            setQuestionInput('');
+                                            setFollowUpSuggestions([]);
+
+                                            const newHistory = [...qaHistory, { role: 'user' as const, content: question }];
+                                            setQaHistory(newHistory);
+                                            setAskingQuestion(true);
+
+                                            // Scroll to bottom
+                                            setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+
+                                            try {
+                                                const res = await fetch(`${API_URL}/codebase/ask`, {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+                                                    body: JSON.stringify({
+                                                        repository: selectedRepo,
+                                                        question,
+                                                        context: explanation ? JSON.stringify(explanation) : null,
+                                                        conversationHistory: qaHistory,
+                                                        analysisData: analysis
+                                                    })
+                                                });
+
+                                                const data = await res.json();
+                                                const answer = data.answer || "I'm sorry, I couldn't process that question. Please try again.";
+                                                setQaHistory(prev => [...prev, { role: 'assistant', content: answer }]);
+
+                                                // Set follow-up suggestions
+                                                if (data.followUpSuggestions && data.followUpSuggestions.length > 0) {
+                                                    setFollowUpSuggestions(data.followUpSuggestions);
+                                                }
+
+                                                // Scroll to bottom after response
+                                                setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+                                            } catch (err) {
+                                                setQaHistory(prev => [...prev, {
+                                                    role: 'assistant',
+                                                    content: "I'm having trouble connecting right now. Please check your connection and try again."
+                                                }]);
+                                            } finally {
+                                                setAskingQuestion(false);
+                                            }
+                                        }}
+                                        className="flex gap-2"
+                                    >
+                                        <Input
+                                            value={questionInput}
+                                            onChange={(e) => setQuestionInput(e.target.value)}
+                                            placeholder="Ask about features, risks, progress, architecture..."
+                                            disabled={askingQuestion}
+                                            className="flex-1 bg-background"
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && !e.shiftKey) {
+                                                    e.currentTarget.form?.requestSubmit();
+                                                }
+                                            }}
+                                        />
+                                        <Button type="submit" disabled={!questionInput.trim() || askingQuestion} size="icon">
+                                            {askingQuestion ? (
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                                <Send className="w-4 h-4" />
+                                            )}
+                                        </Button>
+                                    </form>
+                                    <p className="text-[10px] text-muted-foreground mt-2 text-center">
+                                        Powered by GPT-4o • Responses are explanatory only — no code modifications
+                                    </p>
+                                </div>
+                            </CardContent>
+                        </Card>
                     )}
 
                     {activeTab === 'overview' && (
@@ -591,6 +895,137 @@ export default function CodebaseOverviewPage() {
                     )}
                 </div>
             )}
+
+            {/* Report Generation Modal - Clean & Beautiful UI */}
+            <Dialog open={showReportModal} onOpenChange={setShowReportModal}>
+                <DialogContent className="max-w-4xl max-h-[90vh] p-0 gap-0 overflow-hidden">
+                    {/* Header */}
+                    <div className="px-6 py-4 border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
+                        <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-lg bg-blue-600 flex items-center justify-center">
+                                <FileText className="w-5 h-5 text-white" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-semibold">Generate Product Report</h2>
+                                <p className="text-sm text-muted-foreground">
+                                    Comprehensive analysis with codebase insights and product data
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Content Area */}
+                    <div className="flex-1 overflow-hidden">
+                        {!reportContent ? (
+                            /* Empty State - Beautiful & Inviting */
+                            <div className="h-[500px] flex flex-col items-center justify-center p-8">
+                                <div className="relative mb-6">
+                                    <div className="absolute inset-0 bg-blue-500/20 blur-3xl rounded-full" />
+                                    <div className="relative h-24 w-24 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
+                                        <Sparkles className="w-12 h-12 text-white" />
+                                    </div>
+                                </div>
+
+                                <h3 className="text-2xl font-bold mb-3 text-center">
+                                    Ready to Create Your Report
+                                </h3>
+
+                                <p className="text-muted-foreground text-center max-w-md mb-8 leading-relaxed">
+                                    Generate a detailed report including executive summary, technical architecture,
+                                    active tasks, recent updates, and key decisions from meetings.
+                                </p>
+
+                                <Button
+                                    onClick={handleGenerateReport}
+                                    disabled={isGenerating}
+                                    size="lg"
+                                    className="gap-2 px-8 h-12 text-base shadow-lg hover:shadow-xl transition-all"
+                                >
+                                    {isGenerating ? (
+                                        <>
+                                            <Loader2 className="w-5 h-5 animate-spin" />
+                                            Generating Report...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Sparkles className="w-5 h-5" />
+                                            Generate Report
+                                        </>
+                                    )}
+                                </Button>
+
+                                {isGenerating && (
+                                    <p className="text-xs text-muted-foreground mt-4 animate-pulse">
+                                        This may take a few moments...
+                                    </p>
+                                )}
+                            </div>
+                        ) : (
+                            /* Report Editor - Clean & Functional */
+                            <div className="h-[500px] flex flex-col p-6 gap-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h3 className="font-semibold">Report Content</h3>
+                                        <p className="text-xs text-muted-foreground">
+                                            Edit the markdown content below before exporting
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                        <span className="px-2 py-1 bg-muted rounded">
+                                            {reportContent.length.toLocaleString()} characters
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <Textarea
+                                    value={reportContent}
+                                    onChange={(e) => setReportContent(e.target.value)}
+                                    className="flex-1 font-mono text-sm resize-none border-2 focus:border-blue-500 transition-colors"
+                                    placeholder="Your report content will appear here..."
+                                />
+
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg">
+                                    <Lightbulb className="w-4 h-4 text-blue-600" />
+                                    <span>
+                                        Tip: The report uses Markdown formatting. Headings, lists, and bold text will be preserved in Google Docs.
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Footer */}
+                    <div className="px-6 py-4 border-t bg-muted/30 flex items-center justify-between">
+                        <Button
+                            variant="ghost"
+                            onClick={() => {
+                                setShowReportModal(false);
+                                setReportContent('');
+                            }}
+                        >
+                            Cancel
+                        </Button>
+
+                        <Button
+                            onClick={handleExportToGoogleDocs}
+                            disabled={!reportContent || isExporting}
+                            className="gap-2 px-6"
+                        >
+                            {isExporting ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Exporting...
+                                </>
+                            ) : (
+                                <>
+                                    <FileText className="w-4 h-4" />
+                                    Export to Google Docs
+                                </>
+                            )}
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

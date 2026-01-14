@@ -1,0 +1,34 @@
+import { getToken } from "next-auth/jwt";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+
+export async function middleware(req: NextRequest) {
+    const token = await getToken({
+        req,
+        secret: process.env.NEXTAUTH_SECRET,
+        cookieName: 'next-auth.session-token.admin', // Explicitly specify our custom cookie name
+    });
+
+    const isAuthPage = req.nextUrl.pathname.startsWith('/auth');
+
+    if (isAuthPage) {
+        if (token) {
+            return NextResponse.redirect(new URL('/', req.url));
+        }
+        return NextResponse.next();
+    }
+
+    if (!token) {
+        const signInUrl = new URL('/auth/signin', req.url);
+        signInUrl.searchParams.set('callbackUrl', req.url);
+        return NextResponse.redirect(signInUrl);
+    }
+
+    return NextResponse.next();
+}
+
+export const config = {
+    matcher: [
+        '/((?!api/auth|auth/signin|auth/error|_next/static|_next/image|favicon.ico|logo.png|centri-logo.png|.*\\.png|.*\\.jpg|.*\\.jpeg|.*\\.svg|.*\\.ico).*)',
+    ],
+};

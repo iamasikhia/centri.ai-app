@@ -74,6 +74,7 @@ export class GithubDocsService {
             const response = await axios.get('https://api.github.com/user/repos', {
                 headers,
                 params: {
+                    affiliation: 'owner,collaborator,organization_member',
                     sort: 'pushed',
                     direction: 'desc',
                     per_page: 50,

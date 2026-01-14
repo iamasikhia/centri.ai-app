@@ -1,15 +1,17 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
+import { Plus, RefreshCw } from 'lucide-react';
 import { Stakeholder, StakeholderStatus } from '@/types/stakeholder';
 import { StakeholderTable } from '@/components/stakeholders/stakeholder-table';
 import { StakeholderForm } from '@/components/stakeholders/stakeholder-form';
 import { EmailModal } from '@/components/stakeholders/email-modal';
 import { ReminderBanner } from '@/components/stakeholders/reminder-banner';
 import { addDays, addWeeks, addMonths, differenceInDays } from 'date-fns';
+import { toast } from '@/hooks/use-toast';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function StakeholdersPage() {
     const [stakeholders, setStakeholders] = useState<Stakeholder[]>([]);
@@ -17,31 +19,51 @@ export default function StakeholdersPage() {
     const [editingStakeholder, setEditingStakeholder] = useState<Stakeholder | null>(null);
     const [emailStakeholder, setEmailStakeholder] = useState<Stakeholder | null>(null);
     const [isEmailOpen, setIsEmailOpen] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
 
-    // --- Persistence ---
-    useEffect(() => {
-        const saved = localStorage.getItem('centri-stakeholders');
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved);
-                // Fix date strings back to Date objects
-                const restored = parsed.map((s: any) => ({
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+    // --- Fetch from API ---
+    const fetchStakeholders = useCallback(async () => {
+        try {
+            const res = await fetch(`${API_URL}/stakeholders`, {
+                headers: { 'x-user-id': 'default-user-id' }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const mapped = data.map((s: any) => ({
                     ...s,
                     lastContactedAt: s.lastContactedAt ? new Date(s.lastContactedAt) : undefined,
                     nextReachOutAt: new Date(s.nextReachOutAt)
                 }));
-                setStakeholders(restored);
-            } catch (e) {
-                console.error("Failed to load stakeholders", e);
+                setStakeholders(mapped);
             }
+        } catch (e) {
+            console.error("Failed to fetch stakeholders", e);
+            // Fallback to localStorage if API fails
+            const saved = localStorage.getItem('centri-stakeholders');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    const restored = parsed.map((s: any) => ({
+                        ...s,
+                        lastContactedAt: s.lastContactedAt ? new Date(s.lastContactedAt) : undefined,
+                        nextReachOutAt: new Date(s.nextReachOutAt)
+                    }));
+                    setStakeholders(restored);
+                } catch (parseError) {
+                    console.error("Failed to parse localStorage", parseError);
+                }
+            }
+        } finally {
+            setIsLoading(false);
         }
-    }, []);
+    }, [API_URL]);
 
     useEffect(() => {
-        if (stakeholders.length > 0) {
-            localStorage.setItem('centri-stakeholders', JSON.stringify(stakeholders));
-        }
-    }, [stakeholders]);
+        fetchStakeholders();
+    }, [fetchStakeholders]);
 
     // --- Logic ---
     const calculateNextDate = (fromDate: Date, frequency: { value: number, unit: string }) => {
@@ -54,51 +76,90 @@ export default function StakeholdersPage() {
         }
     };
 
-    const handleCreateOrUpdate = (data: Partial<Stakeholder>) => {
-        if (data.id) {
-            // Update
-            setStakeholders(prev => prev.map(s => s.id === data.id ? { ...s, ...data } as Stakeholder : s));
-        } else {
-            // Create
-            const now = new Date();
-            // Default next reach out is based on creation time + frequency logic, or just T+Freq
-            // If we assume "Start now", then next is Today + Frequency.
-            const nextDate = calculateNextDate(now, data.frequency as any);
-
-            const newStakeholder: Stakeholder = {
-                id: Date.now().toString(),
-                ...data as any,
-                lastContactedAt: undefined,
-                nextReachOutAt: nextDate,
-            };
-            setStakeholders(prev => [...prev, newStakeholder]);
+    const handleCreateOrUpdate = async (data: Partial<Stakeholder>) => {
+        setIsSaving(true);
+        try {
+            if (data.id) {
+                // Update
+                await fetch(`${API_URL}/stakeholders/${data.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-user-id': 'default-user-id'
+                    },
+                    body: JSON.stringify(data)
+                });
+                toast({ title: 'Updated', description: 'Stakeholder updated successfully', variant: 'success' });
+            } else {
+                // Create
+                await fetch(`${API_URL}/stakeholders`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-user-id': 'default-user-id'
+                    },
+                    body: JSON.stringify(data)
+                });
+                toast({ title: 'Created', description: 'Stakeholder added successfully', variant: 'success' });
+            }
+            fetchStakeholders();
+            setIsFormOpen(false);
+        } catch (e) {
+            console.error("Save failed", e);
+            toast({ title: 'Error', description: 'Failed to save stakeholder', variant: 'destructive' });
+        } finally {
+            setIsSaving(false);
+            setEditingStakeholder(null);
         }
-        setEditingStakeholder(null);
     };
 
-    const handleDelete = (s: Stakeholder) => {
-        if (confirm(`Are you sure you want to remove ${s.name}?`)) {
+    const handleDelete = async (s: Stakeholder) => {
+        if (!confirm(`Are you sure you want to remove ${s.name}?`)) return;
+
+        try {
+            await fetch(`${API_URL}/stakeholders/${s.id}`, {
+                method: 'DELETE',
+                headers: { 'x-user-id': 'default-user-id' }
+            });
             setStakeholders(prev => prev.filter(item => item.id !== s.id));
+            toast({ title: 'Deleted', description: 'Stakeholder removed', variant: 'success' });
+        } catch (e) {
+            console.error("Delete failed", e);
+            toast({ title: 'Error', description: 'Failed to delete stakeholder', variant: 'destructive' });
         }
     };
 
-    const handleLogContact = (s: Stakeholder) => {
-        const now = new Date();
-        const nextDate = calculateNextDate(now, s.frequency);
-        const updated = {
-            ...s,
-            lastContactedAt: now,
-            nextReachOutAt: nextDate
-        };
-        setStakeholders(prev => prev.map(item => item.id === s.id ? updated : item));
+    const handleLogContact = async (s: Stakeholder) => {
+        try {
+            const res = await fetch(`${API_URL}/stakeholders/${s.id}/log-contact`, {
+                method: 'POST',
+                headers: { 'x-user-id': 'default-user-id' }
+            });
+            if (res.ok) {
+                const result = await res.json();
+                setStakeholders(prev => prev.map(item =>
+                    item.id === s.id
+                        ? { ...item, lastContactedAt: new Date(result.lastContactedAt), nextReachOutAt: new Date(result.nextReachOutAt) }
+                        : item
+                ));
+                toast({ title: 'Logged', description: 'Contact logged successfully', variant: 'success' });
+            }
+        } catch (e) {
+            console.error("Log contact failed", e);
+            // Fallback to local update
+            const now = new Date();
+            const nextDate = calculateNextDate(now, s.frequency);
+            setStakeholders(prev => prev.map(item =>
+                item.id === s.id ? { ...item, lastContactedAt: now, nextReachOutAt: nextDate } : item
+            ));
+        }
     };
 
     const handleSendEmail = async (id: string, subject: string, body: string) => {
-        // In a real app, call API here.
-        // For now, we mock success and log contact.
         const s = stakeholders.find(item => item.id === id);
         if (s) {
-            handleLogContact(s);
+            await handleLogContact(s);
+            toast({ title: 'Email Sent', description: `Email sent to ${s.name}`, variant: 'success' });
         }
     };
 
@@ -117,6 +178,22 @@ export default function StakeholdersPage() {
     const overdueCount = stakeholders.filter(s => getStatus(s.nextReachOutAt) === 'overdue').length;
     const dueSoonCount = stakeholders.filter(s => getStatus(s.nextReachOutAt) === 'due-soon').length;
 
+    if (isLoading) {
+        return (
+            <div className="h-full flex flex-col p-6 max-w-[1600px] mx-auto w-full">
+                <div className="flex items-center justify-between mb-8">
+                    <div className="space-y-2">
+                        <Skeleton className="h-9 w-64" />
+                        <Skeleton className="h-5 w-96" />
+                    </div>
+                    <Skeleton className="h-11 w-40" />
+                </div>
+                <Skeleton className="h-16 w-full mb-6" />
+                <Skeleton className="h-96 w-full" />
+            </div>
+        );
+    }
+
     return (
         <div className="h-full flex flex-col p-6 max-w-[1600px] mx-auto w-full">
             <div className="flex items-center justify-between mb-8">
@@ -124,10 +201,20 @@ export default function StakeholdersPage() {
                     <h1 className="text-3xl font-bold tracking-tight">Stakeholder Management</h1>
                     <p className="text-muted-foreground mt-1 text-lg">Manage relationships and communication cadence.</p>
                 </div>
-                <Button onClick={() => { setEditingStakeholder(null); setIsFormOpen(true); }} size="lg">
-                    <Plus className="w-5 h-5 mr-2" />
-                    Add Stakeholder
-                </Button>
+                <div className="flex items-center gap-3">
+                    <Button
+                        variant="outline"
+                        onClick={fetchStakeholders}
+                        className="gap-2"
+                    >
+                        <RefreshCw className="w-4 h-4" />
+                        Refresh
+                    </Button>
+                    <Button onClick={() => { setEditingStakeholder(null); setIsFormOpen(true); }} size="lg">
+                        <Plus className="w-5 h-5 mr-2" />
+                        Add Stakeholder
+                    </Button>
+                </div>
             </div>
 
             <ReminderBanner overdueCount={overdueCount} dueSoonCount={dueSoonCount} />

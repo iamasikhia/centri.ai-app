@@ -10,9 +10,8 @@ export class GoogleDocsProvider implements IProvider {
     getAuthUrl(redirectUri: string): string {
         const clientId = this.config.get('GOOGLE_CLIENT_ID');
         const scopes = [
-            'https://www.googleapis.com/auth/documents.readonly',
-            'https://www.googleapis.com/auth/drive.readonly',
-            'https://www.googleapis.com/auth/drive.metadata.readonly',
+            'https://www.googleapis.com/auth/documents',
+            'https://www.googleapis.com/auth/drive.file',
             'https://www.googleapis.com/auth/userinfo.email',
         ].join(' ');
 
@@ -198,6 +197,135 @@ export class GoogleDocsProvider implements IProvider {
         } catch (error) {
             console.error('[GoogleDocs] Search failed:', error.response?.data || error.message);
             return [];
+        }
+    }
+    async createDocument(tokens: any, title: string, content: string): Promise<string> {
+        try {
+            const headers = {
+                Authorization: `Bearer ${tokens.access_token}`,
+            };
+
+            // 1. Create Document
+            const createRes = await axios.post('https://docs.googleapis.com/v1/documents', {
+                title: title
+            }, { headers });
+
+            const docId = createRes.data.documentId;
+
+            // 2. Parse Markdown and Prepare Requests
+            if (content) {
+                const requests = [];
+                let currentIndex = 1; // Docs start at index 1
+                let plainText = '';
+
+                const lines = content.split('\n');
+
+                for (const line of lines) {
+                    let textToProcess = line;
+                    let paragraphStyle = 'NORMAL_TEXT';
+                    let isBullet = false;
+
+                    // Detect Heading / List
+                    if (line.startsWith('# ')) {
+                        paragraphStyle = 'HEADING_1';
+                        textToProcess = line.substring(2);
+                    } else if (line.startsWith('## ')) {
+                        paragraphStyle = 'HEADING_2';
+                        textToProcess = line.substring(3);
+                    } else if (line.startsWith('### ')) {
+                        paragraphStyle = 'HEADING_3';
+                        textToProcess = line.substring(4);
+                    } else if (line.startsWith('- ')) {
+                        textToProcess = line.substring(2);
+                        isBullet = true;
+                    }
+
+                    // Handle Bold (Simple match: **text**)
+                    // We need to strip ** and track indices relative to `plainText` length + 1
+                    const boldRegex = /\*\*(.*?)\*\*/g;
+                    let match;
+                    let lastIndex = 0;
+                    let linePlainText = '';
+                    const boldRanges = [];
+
+                    // Reset regex state
+                    while ((match = boldRegex.exec(textToProcess)) !== null) {
+                        // Text before bold
+                        const before = textToProcess.substring(lastIndex, match.index);
+                        linePlainText += before;
+
+                        // Bold text
+                        const boldText = match[1];
+                        const boldStart = currentIndex + linePlainText.length;
+                        linePlainText += boldText;
+                        const boldEnd = currentIndex + linePlainText.length;
+
+                        boldRanges.push({ start: boldStart, end: boldEnd });
+
+                        lastIndex = boldRegex.lastIndex;
+                    }
+                    // Remaining text
+                    linePlainText += textToProcess.substring(lastIndex);
+
+                    const lineStart = currentIndex;
+
+                    // Append to full text buffer
+                    plainText += linePlainText + '\n';
+                    currentIndex += linePlainText.length + 1; // +1 for newline
+
+                    // Create Requests
+
+                    // 1. Paragraph Style (Headings)
+                    if (paragraphStyle !== 'NORMAL_TEXT') {
+                        requests.push({
+                            updateParagraphStyle: {
+                                range: { startIndex: lineStart, endIndex: currentIndex - 1 }, // Exclude newline usually
+                                paragraphStyle: { namedStyleType: paragraphStyle },
+                                fields: 'namedStyleType'
+                            }
+                        });
+                    }
+
+                    // 2. Bold Styles
+                    boldRanges.forEach(range => {
+                        requests.push({
+                            updateTextStyle: {
+                                range: { startIndex: range.start, endIndex: range.end },
+                                textStyle: { bold: true },
+                                fields: 'bold'
+                            }
+                        });
+                    });
+
+                    // 3. Bullets
+                    if (isBullet) {
+                        requests.push({
+                            createParagraphBullets: {
+                                range: { startIndex: lineStart, endIndex: currentIndex - 1 },
+                                bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE'
+                            }
+                        });
+                    }
+                }
+
+                // First request: Insert all text
+                requests.unshift({
+                    insertText: {
+                        location: { index: 1 },
+                        text: plainText
+                    }
+                });
+
+                await axios.post(`https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`, {
+                    requests
+                }, { headers });
+            }
+
+            return `https://docs.google.com/document/d/${docId}/edit`;
+        } catch (error) {
+            const msg = error.response?.data?.error?.message || error.message;
+            console.error('[GoogleDocs] Create document failed:', msg);
+            throw new Error(`Failed to create document: ${msg}`);
         }
     }
 }

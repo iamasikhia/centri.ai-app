@@ -5,14 +5,15 @@ import { differenceInDays, parseISO, startOfWeek, subDays } from 'date-fns';
 export class GithubIntelligenceService {
 
     processActivity(activity: any) {
-        const { commits, prs, releases } = activity;
+        const { commits, prs, releases, repositories: allRepositories } = activity;
 
         const weeklyBrief = this.generateWeeklyBrief(commits, prs, releases);
         const metrics = this.calculateMetrics(commits, prs, releases);
         const initiatives = this.clusterInitiatives(prs, commits);
         const risks = this.detectRisks(prs, commits); // Only PRs and Commits needed for risk
 
-        const repositories = Array.from(new Set([
+        // Use the full repository list if provided, otherwise extract from activity
+        const repositories = allRepositories || Array.from(new Set([
             ...commits.map((c: any) => c.repo),
             ...prs.map((p: any) => p.repo)
         ]));

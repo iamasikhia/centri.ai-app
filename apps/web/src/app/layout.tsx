@@ -9,9 +9,12 @@ export const metadata: Metadata = {
     title: 'Centri.ai',
     description: 'Pre-meeting and day-start dashboard for managers',
     icons: {
-        icon: '/logo.png',
+        icon: [
+            { url: '/icon.png', type: 'image/png' },
+            { url: '/logo.png', type: 'image/png' },
+        ],
         shortcut: '/logo.png',
-        apple: '/logo.png',
+        apple: '/apple-icon.png',
     },
 }
 

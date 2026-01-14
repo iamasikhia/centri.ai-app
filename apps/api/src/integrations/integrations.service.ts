@@ -34,7 +34,7 @@ export class IntegrationsService {
       gmail: new GmailProvider(config),
       jira: new JiraProvider(config),
       slack: new SlackProvider(config),
-      github: new GithubProvider(config),
+      github: new GithubProvider(),
       clickup: new ClickUpProvider(config),
       google_drive: new GoogleDriveProvider(config),
       google_docs: new GoogleDocsProvider(config),
@@ -47,7 +47,20 @@ export class IntegrationsService {
     };
   }
 
-  getConnectUrl(providerName: string, userId: string) {
+  async getAllowedProviders() {
+    const setting = await this.prisma.systemSetting.findUnique({
+      where: { key: 'integration_config' }
+    });
+    // Default to true if no config exists
+    return (setting?.value as Record<string, boolean>) || {};
+  }
+
+  async getConnectUrl(providerName: string, userId: string) {
+    const allowed = await this.getAllowedProviders();
+    if (allowed[providerName] === false) {
+      throw new BadRequestException(`Integration ${providerName} is disabled by the administrator.`);
+    }
+
     const provider = this.providers[providerName];
     if (!provider) throw new NotFoundException('Provider not found');
 
@@ -60,7 +73,12 @@ export class IntegrationsService {
       : (this.config.get('API_BASE_URL') || 'http://localhost:3001');
 
     const redirectUri = `${baseUrl}/integrations/${providerName}/callback`;
-    const authUrl = provider.getAuthUrl(redirectUri);
+    let authUrl = provider.getAuthUrl(redirectUri);
+
+    // Append state param with userId to preserve identity through OAuth flow
+    // Check if authUrl already has params
+    const separator = authUrl.includes('?') ? '&' : '?';
+    authUrl = `${authUrl}${separator}state=${encodeURIComponent(userId)}`;
 
     // Debug logging for Fathom
     if (providerName === 'fathom') {
@@ -308,5 +326,72 @@ export class IntegrationsService {
     });
 
     return { success: true, results };
+  }
+
+  async getRecentActivity(userId: string) {
+    const integrations = await this.prisma.integrations.findMany({
+      where: { userId }
+    });
+
+    const activity: any = {
+      github: [],
+      google_drive: [],
+      all: []
+    };
+
+    for (const integration of integrations) {
+      const provider = this.providers[integration.provider];
+      if (provider && 'fetchActivity' in provider) {
+        try {
+          const tokens = {
+            access_token: this.encryption.decrypt(integration.accessToken),
+            refresh_token: integration.refreshToken ? this.encryption.decrypt(integration.refreshToken) : undefined,
+          };
+
+          let data;
+          if (integration.provider === 'github') {
+            data = await (provider as any).fetchActivity(tokens.access_token);
+          } else {
+            data = await (provider as any).fetchActivity(tokens);
+          }
+
+          if (integration.provider === 'github') {
+            const items = [];
+            if (data.prs) items.push(...data.prs.map((i: any) => ({ ...i, typeKey: 'PR' })));
+            if (data.issues) items.push(...data.issues.map((i: any) => ({ ...i, typeKey: 'Issue' })));
+            if (data.reviews) items.push(...data.reviews.map((i: any) => ({ ...i, typeKey: 'Review' })));
+
+            const standardized = items.map((i: any) => ({
+              source: 'github',
+              title: `${i.typeKey}: ${i.title}`,
+              link: i.url,
+              date: i.updated_at || i.created_at,
+              status: i.state
+            }));
+
+            activity.github.push(...standardized);
+            activity.all.push(...standardized);
+          } else if (integration.provider === 'google_drive') {
+            if (Array.isArray(data)) {
+              const items = data.map((f: any) => ({
+                source: 'google_drive',
+                title: f.name,
+                link: f.webViewLink,
+                date: f.modifiedTime,
+                status: 'modified'
+              }));
+              activity.google_drive.push(...items);
+              activity.all.push(...items);
+            }
+          }
+        } catch (e) {
+          console.error(`Failed to fetch activity for ${integration.provider}`, e);
+        }
+      }
+    }
+
+    activity.all.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    return activity;
   }
 }

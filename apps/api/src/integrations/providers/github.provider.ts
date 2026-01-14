@@ -1,102 +1,83 @@
-import { ConfigService } from '@nestjs/config';
-import { IProvider, SyncResult } from './provider.interface';
+import { Injectable } from '@nestjs/common';
 import axios from 'axios';
+import { IProvider } from './provider.interface';
 
+@Injectable()
 export class GithubProvider implements IProvider {
     name = 'github';
 
-    constructor(private config: ConfigService) { }
-
     getAuthUrl(redirectUri: string): string {
-        const clientId = this.config.get('GITHUB_CLIENT_ID');
-        // Scopes: repo (to read code/commits), user:email (for discovery)
-        const scopes = 'repo user:email';
-        return `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}`;
+        const clientId = process.env.GITHUB_CLIENT_ID;
+        const scopes = 'repo,user,read:org';
+        return `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}`;
     }
 
     async exchangeCode(code: string, redirectUri: string): Promise<any> {
-        const clientId = this.config.get('GITHUB_CLIENT_ID');
-        const clientSecret = this.config.get('GITHUB_CLIENT_SECRET');
+        const clientId = process.env.GITHUB_CLIENT_ID;
+        const clientSecret = process.env.GITHUB_CLIENT_SECRET;
 
         const params = {
             client_id: clientId,
             client_secret: clientSecret,
             code,
-            // redirect_uri: redirectUri, // Omitted to let GitHub use the default configured one
+            redirect_uri: redirectUri,
             state: 'random_state_string'
         };
         console.log('[Github] Exchanging code. URI:', redirectUri, 'ClientID:', clientId);
 
-        const response = await axios.post(
-            'https://github.com/login/oauth/access_token',
-            params,
-            {
-                headers: { Accept: 'application/json' },
-            }
-        );
+        const res = await axios.post('https://github.com/login/oauth/access_token', params, {
+            headers: { Accept: 'application/json' }
+        });
 
-        if (response.data.error) {
-            console.error('[Github] Exchange Error:', response.data);
-            throw new Error(response.data.error_description || response.data.error);
-        }
-
-        return response.data;
+        console.log('[Github] Token exchange response:', res.data);
+        return res.data;
     }
 
-    async syncData(userId: string, tokens: any): Promise<SyncResult> {
-        const tasks = [];
-        const teamMembers = [];
+    async syncData(token: any): Promise<any> {
+        const headers = { Authorization: `Bearer ${token.access_token}` };
 
-        try {
-            const headers = {
-                Authorization: `Bearer ${tokens.access_token}`,
-                Accept: 'application/vnd.github.v3+json'
-            };
+        // Fetch user info
+        const userRes = await axios.get('https://api.github.com/user', { headers });
+        const user = userRes.data;
 
-            // 1. Fetch User (Discovery)
-            const userRes = await axios.get('https://api.github.com/user', { headers });
-            teamMembers.push({
-                externalId: String(userRes.data.id),
-                name: userRes.data.name || userRes.data.login,
-                email: userRes.data.email, // Might be null if private
-                avatarUrl: userRes.data.avatar_url,
-                sourcesJson: JSON.stringify(['github'])
-            });
+        // Fetch repositories
+        const reposRes = await axios.get('https://api.github.com/user/repos', {
+            headers,
+            params: { per_page: 10, sort: 'updated' }
+        });
+        const repos = reposRes.data;
 
-            // 2. Fetch Notifications / Activity (Updates to main/product)
-            // For MVP: Fetch recently updated Pull Requests from user's repos
-            // "Managers can get notifications when new update has been made to main or product"
-            // -> We'll look for closed PRs merged to 'main' or 'product' recently.
+        // Map to team members (contributors)
+        const teamMembers = repos.flatMap((repo: any) => {
+            return [{
+                name: user.name || user.login,
+                email: user.email || `${user.login}@github.com`,
+                avatarUrl: user.avatar_url,
+                sources: ['github']
+            }];
+        });
 
-            const oneWeekAgo = new Date();
-            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-            const dateStr = oneWeekAgo.toISOString().split('T')[0];
+        // Map to tasks (open issues assigned to user)
+        const issuesRes = await axios.get('https://api.github.com/search/issues', {
+            headers,
+            params: { q: 'is:issue is:open assignee:@me', per_page: 20 }
+        });
 
-            // Search query: is:pr is:merged merged:>202X-XX-XX base:main
-            // This is a global search (can be rate limited). Better to list events or user repos.
-            // For MVP scalability: Search issues API scoped to user involves less iteration than listing all repos.
-
-            const q = `is:pr is:merged merged:>${dateStr} author:${userRes.data.login} archived:false`;
-            const searchRes = await axios.get(`https://api.github.com/search/issues?q=${encodeURIComponent(q)}`, { headers });
-
-            if (searchRes.data.items) {
-                tasks.push(...searchRes.data.items.map((pr: any) => ({
-                    externalId: String(pr.id),
-                    title: `[Merged] ${pr.title}`,
-                    status: 'Done',
-                    assigneeEmail: null, // GitHub doesn't easily expose emails in search
-                    dueDate: pr.closed_at, // Use closed time as "due/done" time
-                    priority: 'High',
-                    isBlocked: false,
-                    rawJson: JSON.stringify(pr)
-                })));
-            }
-
-        } catch (e) {
-            console.error('GitHub Sync Error', e.message);
-        }
+        const tasks = (issuesRes.data.items || []).map((issue: any) => ({
+            externalId: `github-${issue.id}`,
+            title: issue.title,
+            status: issue.state === 'open' ? 'Todo' : 'Done',
+            assigneeEmail: user.email || `${user.login}@github.com`,
+            dueDate: null,
+            priority: issue.labels.some((l: any) => l.name.includes('urgent')) ? 'High' : 'Medium',
+            isBlocked: issue.labels.some((l: any) => l.name.includes('blocked')),
+            source: 'github',
+            sourceUrl: issue.html_url,
+            description: issue.body
+        }));
 
         return {
+            repos,
             tasks,
             teamMembers
         };
@@ -105,76 +86,136 @@ export class GithubProvider implements IProvider {
     async fetchActivity(token: string): Promise<any> {
         try {
             const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' };
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            const dateStr = sevenDaysAgo.toISOString().split('T')[0];
 
-            // 1. Get recent repos (limit 5)
+            // 0. Get User Identity
+            const userRes = await axios.get('https://api.github.com/user', { headers });
+            const username = userRes.data.login;
+
+            console.log(`[Github] Fetching activity for user: ${username}`);
+
+            // 1. Get all repositories the user has access to (owned + member of)
             const reposRes = await axios.get('https://api.github.com/user/repos', {
                 headers,
-                params: { sort: 'pushed', direction: 'desc', per_page: 5 }
+                params: {
+                    affiliation: 'owner,collaborator,organization_member',
+                    sort: 'updated',
+                    per_page: 50
+                }
             });
+            const repos = reposRes.data || [];
+            console.log(`[Github] Found ${repos.length} repositories`);
 
-            const repos = reposRes.data;
-            const twoWeeksAgo = new Date();
-            twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+            let allCommits: any[] = [];
+            let allPRs: any[] = [];
+            let allReleases: any[] = [];
 
-            const activity = {
-                commits: [],
-                prs: [],
-                releases: []
+            // 2. For each repo, fetch recent activity
+            for (const repo of repos.slice(0, 5)) { // Limit to 5 most recent repos to avoid rate limits
+                const repoFullName = repo.full_name;
+                console.log(`[Github] Fetching activity for repo: ${repoFullName}`);
+
+                try {
+                    // Fetch commits
+                    const commitsRes = await axios.get(`https://api.github.com/repos/${repoFullName}/commits`, {
+                        headers,
+                        params: { since: dateStr, per_page: 20 }
+                    });
+                    const commits = (commitsRes.data || []).map((c: any) => ({
+                        sha: c.sha,
+                        message: c.commit.message,
+                        date: c.commit.author.date,
+                        author: c.author?.login || c.commit.author.name,
+                        url: c.html_url,
+                        repo: repoFullName
+                    }));
+                    allCommits.push(...commits);
+
+                    // Fetch PRs
+                    const prsRes = await axios.get(`https://api.github.com/repos/${repoFullName}/pulls`, {
+                        headers,
+                        params: { state: 'all', sort: 'updated', direction: 'desc', per_page: 10 }
+                    });
+                    const prs = (prsRes.data || [])
+                        .filter((pr: any) => new Date(pr.updated_at) >= sevenDaysAgo)
+                        .map((pr: any) => ({
+                            number: pr.number,
+                            title: pr.title,
+                            state: pr.state,
+                            created_at: pr.created_at,
+                            updated_at: pr.updated_at,
+                            closed_at: pr.closed_at,
+                            merged_at: pr.merged_at,
+                            merged: !!pr.merged_at,
+                            author: pr.user.login,
+                            url: pr.html_url,
+                            repo: repoFullName,
+                            additions: pr.additions || 0,
+                            deletions: pr.deletions || 0,
+                            changed_files: pr.changed_files || 0,
+                            requested_reviewers: pr.requested_reviewers?.map((r: any) => r.login) || [],
+                            merged_by: pr.merged_by?.login || null
+                        }));
+                    allPRs.push(...prs);
+
+                    // Fetch releases
+                    const releasesRes = await axios.get(`https://api.github.com/repos/${repoFullName}/releases`, {
+                        headers,
+                        params: { per_page: 5 }
+                    });
+                    const releases = (releasesRes.data || [])
+                        .filter((r: any) => new Date(r.published_at) >= sevenDaysAgo)
+                        .map((r: any) => ({
+                            id: r.id,
+                            name: r.name,
+                            tag_name: r.tag_name,
+                            published_at: r.published_at,
+                            author: r.author?.login,
+                            url: r.html_url,
+                            repo: repoFullName,
+                            prerelease: r.prerelease
+                        }));
+                    allReleases.push(...releases);
+
+                } catch (repoError) {
+                    console.error(`[Github] Error fetching data for ${repoFullName}:`, repoError.message);
+                    // Continue with other repos
+                }
+            }
+
+            console.log(`[Github] Total activity: ${allCommits.length} commits, ${allPRs.length} PRs, ${allReleases.length} releases`);
+
+            return {
+                commits: allCommits,
+                releases: allReleases,
+                prs: allPRs,
+                issues: [], // Not fetching issues for now to reduce API calls
+                reviews: [],
+                repositories: repos.map((r: any) => ({
+                    fullName: r.full_name,
+                    name: r.name,
+                    description: r.description,
+                    language: r.language,
+                    stars: r.stargazers_count,
+                    forks: r.forks_count,
+                    isPrivate: r.private,
+                    updatedAt: r.updated_at,
+                    defaultBranch: r.default_branch,
+                    url: r.html_url,
+                    owner: r.owner?.login
+                }))
             };
 
-            await Promise.all(repos.map(async (repo: any) => {
-                // Commits
-                try {
-                    const commitsRes = await axios.get(`https://api.github.com/repos/${repo.full_name}/commits`, {
-                        headers, params: { since: twoWeeksAgo.toISOString(), per_page: 20 }
-                    });
-                    activity.commits.push(...commitsRes.data.map((c: any) => ({
-                        repo: repo.name,
-                        message: c.commit.message,
-                        author: c.commit.author.name,
-                        date: c.commit.author.date,
-                        url: c.html_url
-                    })));
-                } catch (e) { }
-
-                // PRs
-                try {
-                    const prsRes = await axios.get(`https://api.github.com/repos/${repo.full_name}/pulls`, {
-                        headers, params: { state: 'all', sort: 'updated', direction: 'desc', per_page: 10 }
-                    });
-                    activity.prs.push(...prsRes.data.map((pr: any) => ({
-                        repo: repo.name,
-                        title: pr.title,
-                        state: pr.state,
-                        merged: !!pr.merged_at,
-                        created_at: pr.created_at,
-                        merged_at: pr.merged_at,
-                        closed_at: pr.closed_at,
-                        user: pr.user.login,
-                        url: pr.html_url
-                    })));
-                } catch (e) { }
-
-                // Releases
-                try {
-                    const relRes = await axios.get(`https://api.github.com/repos/${repo.full_name}/releases`, {
-                        headers, params: { per_page: 3 }
-                    });
-                    activity.releases.push(...relRes.data.map((r: any) => ({
-                        repo: repo.name,
-                        name: r.name,
-                        tag: r.tag_name,
-                        published_at: r.published_at,
-                        url: r.html_url
-                    })));
-                } catch (e) { }
-            }));
-
-            return activity;
-
         } catch (e) {
+            const fs = require('fs');
+            fs.appendFileSync('github-debug.log', `[${new Date().toISOString()}] Fetch Activity Error: ${e.message}\n`);
+            if (e.response) {
+                fs.appendFileSync('github-debug.log', `[${new Date().toISOString()}] Response Data: ${JSON.stringify(e.response.data)}\n`);
+            }
             console.error('[Github] Fetch Activity Error', e.message);
-            return { commits: [], prs: [], releases: [] };
+            return { commits: [], releases: [], prs: [], issues: [], reviews: [] };
         }
     }
 }

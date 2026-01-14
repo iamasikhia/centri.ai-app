@@ -11,6 +11,7 @@ import axios from 'axios';
 import { cn } from '@/lib/utils';
 import { AddTaskModal } from '@/components/dashboard/add-task-modal';
 import { Task } from '@/lib/dashboard-utils';
+import { toast } from '@/hooks/use-toast';
 
 interface Todo {
     id: string;
@@ -193,9 +194,10 @@ export default function TodosPage() {
                 headers: { 'x-user-id': 'default-user-id' }
             });
             fetchTodos();
+            toast({ title: 'Added', description: 'Task added to Google Calendar', variant: 'success' });
         } catch (e: any) {
             console.error("Add to calendar failed", e);
-            alert("Failed to add to calendar. Please ensure Google Tasks API is enabled in your Google Console and try reconnecting your account.");
+            toast({ title: 'Calendar Error', description: 'Failed to add to calendar. Please ensure Google Tasks API is enabled and try reconnecting.', variant: 'destructive' });
         }
     };
 

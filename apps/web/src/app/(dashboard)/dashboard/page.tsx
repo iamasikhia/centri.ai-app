@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RecommendedActionsSidebar } from '@/components/dashboard/recommended-actions-sidebar';
 import { AddTaskModal } from '@/components/dashboard/add-task-modal';
+import { ReportGenerationModal } from '@/components/dashboard/report-generation-modal';
 import { MetricDetailsSidebar } from '@/components/dashboard/metric-details-sidebar';
 import { Task } from '@/lib/dashboard-utils';
 import { format, differenceInDays, parseISO } from 'date-fns';
@@ -17,7 +18,7 @@ import {
     RefreshCw, AlertCircle, Clock, CheckCircle2,
     ArrowUpRight, ArrowDownRight, Minus, Sparkles,
     Zap, GitMerge, GitPullRequest, Activity, AlertTriangle,
-    Github, Layers, Mic, Calendar
+    Github, Layers, Mic, Calendar, FileText
 } from 'lucide-react';
 import { buildDashboardViewModel, DashboardViewModel, DetailedMetric, ProductFeature, RiskItem, calculateExecutionMomentum } from '@/lib/dashboard-utils';
 import { cn } from '@/lib/utils';
@@ -25,6 +26,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { RecentActivityFeed } from '@/components/dashboard/recent-activity-feed';
 import { RepositoryContextBanner } from '@/components/dashboard/repository-context-banner';
 import { UpcomingCalls } from '@/components/dashboard/upcoming-calls';
+import { MeetingPrepCard } from '@/components/dashboard/meeting-prep-card';
 
 // --- Components ---
 
@@ -196,6 +198,7 @@ export default function DashboardPage() {
         title: string;
         value: string | number;
     } | null>(null);
+    const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
     const displayedMetrics = useMemo(() => {
         if (!viewModel) return [];
@@ -255,10 +258,17 @@ export default function DashboardPage() {
         const recentCommits = commits.filter((c: any) => differenceInDays(new Date(), parseISO(c.date)) <= 3).length;
         const totalActivity = recentCommits + merged.length + shipped.length;
 
-        if (totalActivity === 0) text += " Activity is currently low.";
-        else if (recentCommits > (selectedRepo === 'All' ? 10 : 2) || merged.length > 2) text += " Momentum is high.";
-        else if (recentCommits > 0 || merged.length > 0) text += " Momentum is stable.";
-        else text += " Activity has slowed.";
+        if (totalActivity === 0) {
+            text += " Activity is currently low.";
+        } else if (merged.length === 0 && shipped.length === 0) {
+            text += " Development is active but no PRs merged yet.";
+        } else if (merged.length > 5 || (recentCommits > (selectedRepo === 'All' ? 20 : 5) && merged.length > 2)) {
+            text += " Momentum is high.";
+        } else if (merged.length > 0 || recentCommits > 0) {
+            text += " Momentum is stable.";
+        } else {
+            text += " Activity has slowed.";
+        }
 
         return text;
     }, [viewModel, selectedRepo, filteredGithubData]);
@@ -286,6 +296,22 @@ export default function DashboardPage() {
         if (status === 'unauthenticated') router.push('/');
         if (status === 'authenticated') fetchData();
     }, [status, timeRange]);
+
+    // Auto-refresh polling commented out
+    /*
+    useEffect(() => {
+        if (status !== 'authenticated') return;
+
+        const interval = setInterval(() => {
+            // Only refresh if page is visible
+            if (!document.hidden) {
+                fetchData();
+            }
+        }, 60000); // 60 seconds
+
+        return () => clearInterval(interval);
+    }, [status, timeRange]);
+    */
 
     const fetchData = async () => {
         const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -361,11 +387,13 @@ export default function DashboardPage() {
                     </div>
 
                     {viewModel.githubRepositories && viewModel.githubRepositories.length > 0 && (
-                        <div className="w-48">
+                        <div className="w-64">
                             <NativeSelect value={selectedRepo} onChange={(e) => setSelectedRepo(e.target.value)}>
                                 <option value="All">All Repositories</option>
                                 {viewModel.githubRepositories.map(repo => (
-                                    <option key={repo} value={repo}>{repo}</option>
+                                    <option key={repo.fullName} value={repo.fullName}>
+                                        {repo.fullName} {repo.language ? `• ${repo.language}` : ''} {repo.isPrivate ? '🔒' : ''}
+                                    </option>
                                 ))}
                             </NativeSelect>
                         </div>
@@ -376,8 +404,17 @@ export default function DashboardPage() {
                         className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-muted text-foreground border rounded-md hover:bg-muted/80 transition-colors"
                     >
                         <RefreshCw className={cn("w-3 h-3", syncing && "animate-spin")} />
-                        {syncing ? 'Syncing...' : `Last synced: ${viewModel.attention.lastSyncedText}`}
+                        {syncing ? 'Syncing...' : `Last synced: ${viewModel.attention?.lastSyncedText || 'Unknown'}`}
                     </button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 h-9 hidden md:flex"
+                        onClick={() => setIsReportModalOpen(true)}
+                    >
+                        <FileText className="w-4 h-4" />
+                        Report
+                    </Button>
                 </div>
             </div>
 
@@ -385,6 +422,8 @@ export default function DashboardPage() {
             {viewModel.githubRawData && (
                 <RepositoryContextBanner
                     repository={selectedRepo}
+                    repositoryDetails={viewModel.githubRepositories?.find(r => r.fullName === selectedRepo)}
+                    allRepositories={viewModel.githubRepositories}
                     githubData={filteredGithubData}
                 />
             )}
@@ -413,6 +452,8 @@ export default function DashboardPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Meeting Prep Card - Priority for PMs */}
 
             {/* 2. Executive Metrics (Scrollable on small, Grid on large) */}
             <div className="space-y-4">
@@ -657,6 +698,11 @@ export default function DashboardPage() {
                     description="Breakdown of this calculation."
                 />
             )}
+            <ReportGenerationModal
+                isOpen={isReportModalOpen}
+                onClose={() => setIsReportModalOpen(false)}
+                repository={selectedRepo !== 'All' ? selectedRepo : undefined}
+            />
         </div>
     );
 }

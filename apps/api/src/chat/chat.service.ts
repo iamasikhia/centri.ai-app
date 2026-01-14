@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { IntegrationsService } from '../integrations/integrations.service';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { CodebaseAnalyzerService } from '../integrations/codebase-analyzer.service';
+import { AnalyticsService } from '../analytics/analytics.service';
 
 // Types matching the JSON structure requested
 export interface ChatResponse {
@@ -40,7 +41,8 @@ export class ChatService {
         private prisma: PrismaService,
         private integrationsService: IntegrationsService,
         private dashboardService: DashboardService,
-        private codebaseAnalyzer: CodebaseAnalyzerService
+        private codebaseAnalyzer: CodebaseAnalyzerService,
+        private analyticsService: AnalyticsService
     ) {
         const apiKey = this.configService.get<string>('OPENAI_API_KEY');
         if (apiKey) {
@@ -883,28 +885,40 @@ If the 'REAL DATA' object is empty or missing the requested info, explicitly sta
         // Fetch if topic is dashboard-related OR general, as this provides crucial context like "Blockers"
         if (topic === 'dashboard' || topic === 'general' || topic === 'tasks' || topic === 'blockers' || topic === 'risks') {
             try {
-                this.logger.log('Fetching Dashboard data...');
-                const dbData = await this.dashboardService.getDashboardData(userId);
+                this.logger.log('Fetching Dashboard & Analytics data...');
+
+                // Concurrent fetch for speed
+                const [dbData, kpis, reliability, featureUsage] = await Promise.all([
+                    this.dashboardService.getDashboardData(userId),
+                    this.analyticsService.getGlobalKPIs(),
+                    this.analyticsService.getSystemReliability(),
+                    this.analyticsService.getFeatureUsage()
+                ]);
 
                 // Simplify for LLM (reduce token usage)
                 integrationData.dashboard = {
                     blockers: dbData.tasks.filter(t => t.isBlocked),
                     risks: dbData.updates,
                     active_tasks_count: dbData.tasks.length,
-                    recent_tasks: dbData.tasks.slice(0, 5), // Only show top 5 active tasks to save tokens
-                    upcoming_meetings: dbData.meetings.slice(0, 3),
-                    team_members: dbData.people.map(p => p.displayName),
-                    github_intelligence: dbData.githubIntelligence // This is the high-level summary
+                    recent_tasks: dbData.tasks.slice(0, 5),
+                    upcoming_meetings: dbData.meetings.filter(m => new Date(m.startTime) > new Date()).slice(0, 3),
+
+                    // Add REAL System Analytics
+                    system_kpis: kpis,
+                    system_reliability: reliability,
+                    platform_usage: featureUsage,
+                    github_intelligence: dbData.githubIntelligence
                 };
-                this.logger.log('Dashboard data attached to context');
+                this.logger.log('Dashboard & Real Analytics data attached to context');
             } catch (e) {
-                this.logger.error(`Exception fetching dashboard data for user ${userId}`, e);
+                this.logger.error(`Exception fetching dashboard/analytics data for user ${userId}`, e);
             }
         }
 
         return {
             userContext: {
                 timezone: 'America/New_York',
+                current_time: new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }),
                 connected_integrations: connectedIntegrationsStr,
                 topic_detected: topic
             },

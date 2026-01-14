@@ -3,9 +3,10 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { Home, Users, Settings, LogOut, MessageCircle, CalendarCheck, Bell, Mail, Zap, Wrench, CheckSquare, Briefcase, Mic, Rocket, Sparkles, BookOpen, Newspaper } from 'lucide-react';
+import { Home, Users, Settings, LogOut, MessageCircle, CalendarCheck, Bell, Mail, Zap, Wrench, CheckSquare, Briefcase, Mic, Rocket, Sparkles, BookOpen, Newspaper, Moon, Sun, Search, Target } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
+import { useTheme } from '@/components/theme-provider';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
@@ -14,6 +15,7 @@ export function Sidebar() {
     const router = useRouter();
     const pathname = usePathname();
     const { data: session, status } = useSession();
+    const { theme, setTheme } = useTheme();
     const [unreadCount, setUnreadCount] = useState(0);
 
     // Poll for notifications
@@ -45,14 +47,13 @@ export function Sidebar() {
     const mainLinks = [
         { href: '/dashboard', label: 'Dashboard', icon: Home },
         // { href: '/notifications', label: 'Notifications', icon: Bell },
-        // { href: '/newsletters', label: 'Newsletters', icon: Newspaper },
         { href: '/meetings', label: 'Meetings', icon: Mic },
-        // { href: '/chat', label: 'Chat', icon: MessageCircle },
+        // { href: '/action-items', label: 'Action Items', icon: Target },
+        // { href: '/chat', label: 'AI Chat', icon: MessageCircle },
         { href: '/codebase-overview', label: 'Codebase Intelligence', icon: BookOpen },
         { href: '/todos', label: 'Tasks', icon: CheckSquare },
         { href: '/questions', label: 'CheckIns', icon: CalendarCheck },
         { href: '/stakeholders', label: 'Stakeholders', icon: Briefcase },
-        // { href: '/fundraising', label: 'Fundraising', icon: Rocket },
     ];
 
     const footerLinks = [
@@ -98,6 +99,23 @@ export function Sidebar() {
                 <h1 className="text-xl font-bold tracking-tight">Centri.ai</h1>
             </div>
 
+            {/* Quick Search Hint */}
+            <div className="px-4 mb-2">
+                <button
+                    onClick={() => {
+                        const event = new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true });
+                        document.dispatchEvent(event);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground bg-muted/50 hover:bg-muted rounded-lg transition-colors"
+                >
+                    <Search className="w-4 h-4" />
+                    <span className="flex-1 text-left">Quick search...</span>
+                    <kbd className="hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-background px-1.5 font-mono text-[10px] font-medium">
+                        ⌘K
+                    </kbd>
+                </button>
+            </div>
+
             <nav className="flex-1 px-4 flex flex-col gap-2 overflow-y-auto">
                 <div className="space-y-1">
                     {mainLinks.map(renderLink)}
@@ -125,13 +143,22 @@ export function Sidebar() {
                             </div>
                         </div>
                     </div>
-                    <button
-                        onClick={handleLogout}
-                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
-                        title="Log out"
-                    >
-                        <LogOut className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                            className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
+                            title="Toggle theme"
+                        >
+                            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                        </button>
+                        <button
+                            onClick={handleLogout}
+                            className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
+                            title="Log out"
+                        >
+                            <LogOut className="w-4 h-4" />
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { IntegrationsController } from './integrations.controller';
 import { SlackController } from './slack.controller';
 import { CodebaseController } from './codebase.controller';
@@ -16,7 +16,7 @@ import { CodebaseExplainerService } from './codebase-explainer.service';
 import { CodebaseAnalyzerService } from './codebase-analyzer.service';
 
 @Module({
-    imports: [ConfigModule, MeetingsModule],
+    imports: [ConfigModule, forwardRef(() => MeetingsModule)],
     controllers: [IntegrationsController, SlackController, CodebaseController],
     providers: [IntegrationsService, PrismaService, EncryptionService, CalendarClassificationService, GithubIntelligenceService, GithubDocsService, CodebaseExplainerService, CodebaseAnalyzerService],
     exports: [IntegrationsService, CalendarClassificationService, GithubIntelligenceService, GithubDocsService, CodebaseExplainerService, CodebaseAnalyzerService],

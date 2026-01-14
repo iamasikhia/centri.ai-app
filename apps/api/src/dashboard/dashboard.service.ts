@@ -85,7 +85,10 @@ export class DashboardService {
 
         // 1. Last Sync
         const lastSync = await this.prisma.syncRun.findFirst({
-            where: { userId, status: 'success' },
+            where: {
+                userId,
+                status: { in: ['success', 'partial_success'] }
+            },
             orderBy: { finishedAt: 'desc' }
         });
 
@@ -124,7 +127,7 @@ export class DashboardService {
             confidence: (m as any).calendarEventConfidence,
             reason: (m as any).calendarEventReasoning,
             decisions: m.decisionsJson ? JSON.parse(m.decisionsJson) : [],
-            blockers: m.blockersJson ? JSON.parse(m.blockersJson) : []
+            blockers: (m as any).blockersJson ? JSON.parse((m as any).blockersJson) : []
         }));
 
         // 4. Tasks (All active or recently updated)
@@ -173,9 +176,9 @@ export class DashboardService {
         }, 0);
 
         const totalBlockers = rangeMeetings.reduce((acc, meeting) => {
-            if (!meeting.blockersJson) return acc;
+            if (!(meeting as any).blockersJson) return acc;
             try {
-                const blockers = JSON.parse(meeting.blockersJson);
+                const blockers = JSON.parse((meeting as any).blockersJson);
                 // Support both list of strings or list of objects if format varies
                 return acc + (Array.isArray(blockers) ? blockers.length : 0);
             } catch (e) {
@@ -197,5 +200,71 @@ export class DashboardService {
             teamStats: [],
             teamMembers: []
         };
+    }
+    async generateWeekReport(userId: string) {
+        const data = await this.getDashboardData(userId, 'week');
+
+        let report = `# Weekly Report - ${new Date().toLocaleDateString()}\n\n`;
+
+        // Executive Summary
+        report += `## Executive Summary\n`;
+        report += `This week, you completed ${data.tasks.filter(t => t.status === 'completed' || t.status === 'Done').length} tasks and attended ${data.meetings.length} meetings.\n`;
+        report += `Active Blockers: ${data.totalBlockers}\n\n`;
+
+        // Accomplishments
+        report += `## Accomplishments\n`;
+        const completedTasks = data.tasks.filter(t => t.status === 'completed' || t.status === 'Done');
+        if (completedTasks.length > 0) {
+            completedTasks.forEach(t => {
+                report += `- [x] ${t.title}\n`;
+            });
+        } else {
+            report += `No tasks completed yet.\n`;
+        }
+        report += `\n`;
+
+        // Meetings & Decisions
+        report += `## Key Meetings & Decisions\n`;
+        if (data.meetings.length > 0) {
+            data.meetings.forEach(m => {
+                report += `### ${m.title} (${new Date(m.startTime).toLocaleDateString()})\n`;
+                if (m.decisions && m.decisions.length > 0) {
+                    report += `**Decisions:**\n`;
+                    m.decisions.forEach((d: string) => report += `- ${d}\n`);
+                }
+                if (m.blockers && m.blockers.length > 0) {
+                    report += `**Blockers Raised:**\n`;
+                    m.blockers.forEach((b: string) => report += `- ${b}\n`);
+                }
+                report += `\n`;
+            });
+        } else {
+            report += `No meetings recorded.\n\n`;
+        }
+
+        // Risks/Blockers
+        report += `## Risks & Blockers\n`;
+        if (data.updates.length > 0) {
+            data.updates.filter(u => u.severity === 'High').forEach(u => {
+                report += `- [URGENT] ${u.text} (${u.source})\n`;
+            });
+        }
+        if (data.totalBlockers === 0 && data.updates.length === 0) {
+            report += `No active risks identified.\n`;
+        }
+
+        return report;
+    }
+
+    async exportReportToDocs(userId: string, content: string, title?: string) {
+        const token = await this.integrationsService.getDecryptedToken(userId, 'google_docs');
+        if (!token) {
+            throw new Error('Google Docs not connected. Please connect in Settings > Integrations.');
+        }
+
+        const provider = this.integrationsService.getProvider('google_docs') as any; // Cast to avoid TS issues if interface doesn't match yet
+        const docTitle = title || `Weekly Report - ${new Date().toLocaleDateString()}`;
+
+        return await provider.createDocument(token, docTitle, content);
     }
 }

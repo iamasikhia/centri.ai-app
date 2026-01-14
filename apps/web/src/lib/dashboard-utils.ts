@@ -42,6 +42,20 @@ export interface Meeting {
     blockers?: string[];
 }
 
+export interface Repository {
+    fullName: string;
+    name: string;
+    description?: string;
+    language?: string;
+    stars: number;
+    forks: number;
+    isPrivate: boolean;
+    updatedAt: string;
+    defaultBranch: string;
+    url: string;
+    owner: string;
+}
+
 
 export interface DetailedMetric {
     id: string;
@@ -134,6 +148,7 @@ export interface DashboardViewModel {
         meetingsTodayCount: number;
         nextMeetingInMinutes?: number;
         lastSyncedText: string;
+        topPriorities: Array<{ title: string; reason: string; }>;
     };
     focus: {
         overdue: Task[];
@@ -158,7 +173,7 @@ export interface DashboardViewModel {
         atRiskTasks: Task[];
     };
     upcomingMeetings: Meeting[];
-    githubRepositories?: string[];
+    githubRepositories?: Repository[];
     githubRawData?: { commits: any[], prs: any[], releases: any[] };
     meetings?: Meeting[];
 }
@@ -265,6 +280,36 @@ export function buildDashboardViewModel(
     const groups = groupTasksByUrgency(tasks, now);
 
     const todaysMeetings = realMeetings.filter(m => isToday(new Date(m.startTime)));
+
+    // Generate Top Priorities
+    const topPriorities: Array<{ title: string; reason: string }> = [];
+
+    // 1. Add imminent meetings (next 2 hours)
+    todaysMeetings.forEach(m => {
+        const diffMins = (new Date(m.startTime).getTime() - now.getTime()) / 60000;
+        if (diffMins > 0 && diffMins < 120) {
+            topPriorities.push({
+                title: `Prep for ${m.title}`,
+                reason: `Starting in ${Math.round(diffMins)} mins`
+            });
+        }
+    });
+
+    // 2. Add blockers
+    blockedTasks.slice(0, 2).forEach(t => {
+        topPriorities.push({
+            title: `Unblock ${t.title}`,
+            reason: t.blockedBy?.[0]?.title ? `Blocked by ${t.blockedBy[0].title}` : 'Blocked task'
+        });
+    });
+
+    // 3. Add overdue items
+    groups.overdue.slice(0, 2).forEach(t => {
+        topPriorities.push({
+            title: t.title,
+            reason: `Overdue ${formatDistanceToNow(new Date(t.dueDate!), { addSuffix: true })}`
+        });
+    });
 
     // Next Meeting
     const upcomingMeetings = realMeetings
@@ -479,7 +524,8 @@ export function buildDashboardViewModel(
             dueTodayCount: groups.dueToday.length,
             meetingsTodayCount: todaysMeetings.length,
             nextMeetingInMinutes,
-            lastSyncedText: data.lastSyncedAt ? formatDistanceToNow(new Date(data.lastSyncedAt), { addSuffix: true }) : 'Never'
+            lastSyncedText: data.lastSyncedAt ? formatDistanceToNow(new Date(data.lastSyncedAt), { addSuffix: true }) : 'Never',
+            topPriorities: topPriorities.slice(0, 5) // ensure no more than 5
         },
         focus: groups,
         blockers: blockedTasks,

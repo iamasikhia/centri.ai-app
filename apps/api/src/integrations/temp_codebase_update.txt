@@ -1,0 +1,14 @@
+            // OTHERWISE: GENERATE CONTENT
+            // 1. Get Codebase Data (if requested)
+            let explanation = null;
+            if (includeCodebaseData) {
+                const ghToken = await this.integrationsService.getDecryptedToken(userId, 'github');
+                if (!ghToken || !ghToken.access_token) return { error: 'GitHub not connected' };
+
+                const [owner, repo] = repository.split('/');
+                const documentation = await this.githubDocsService.fetchRepositoryDocumentation(ghToken.access_token, owner, repo);
+
+                if (documentation.combinedContent) {
+                    explanation = await this.explainerService.explainCodebase(documentation.combinedContent, repository);
+                }
+            }

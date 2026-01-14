@@ -1,13 +1,17 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MeetingsController } from './meetings.controller';
 import { MeetingsService } from './meetings.service';
 import { MeetingAnalysisService } from './meeting-analysis.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 @Module({
-    imports: [PrismaModule],
+    imports: [
+        PrismaModule,
+        forwardRef(() => IntegrationsModule)
+    ],
     controllers: [MeetingsController],
     providers: [MeetingsService, MeetingAnalysisService],
-    exports: [MeetingAnalysisService], // Export so IntegrationsService can use it (if we circular dep workaround or move it)
+    exports: [MeetingAnalysisService],
 })
 export class MeetingsModule { }

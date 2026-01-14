@@ -2,6 +2,8 @@ import { Sidebar } from '@/components/sidebar'
 import { FloatingChat } from '@/components/chat/floating-chat'
 import { ChatProvider } from '@/components/chat/chat-provider'
 import { NotificationsSheet } from '@/components/dashboard/notifications-sheet'
+import { Toaster } from '@/components/ui/toaster'
+import { CommandPalette } from '@/components/command-palette'
 
 export default function DashboardLayout({
     children,
@@ -18,6 +20,8 @@ export default function DashboardLayout({
                 <FloatingChat />
                 <NotificationsSheet />
             </div>
+            <Toaster />
+            <CommandPalette />
         </ChatProvider>
     )
 }

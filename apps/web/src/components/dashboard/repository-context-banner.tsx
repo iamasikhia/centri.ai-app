@@ -1,9 +1,12 @@
-import { Github, Users, GitBranch, Clock, ExternalLink } from 'lucide-react';
+import { Github, Users, GitBranch, Clock, ExternalLink, Star, GitFork, Lock, Globe } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { Repository } from '@/lib/dashboard-utils';
 
 interface RepositoryContextBannerProps {
     repository: string;
+    repositoryDetails?: Repository;
+    allRepositories?: Repository[];
     githubData?: {
         commits: any[];
         prs: any[];
@@ -11,16 +14,16 @@ interface RepositoryContextBannerProps {
     };
 }
 
-export function RepositoryContextBanner({ repository, githubData }: RepositoryContextBannerProps) {
+export function RepositoryContextBanner({ repository, repositoryDetails, allRepositories, githubData }: RepositoryContextBannerProps) {
     // Calculate repository stats
     const getRepoStats = () => {
         if (!githubData || repository === 'All') {
-            const repoCount = githubData ?
+            const repoCount = allRepositories?.length || (githubData ?
                 new Set([
                     ...githubData.commits.map(c => c.repo),
                     ...githubData.prs.map(p => p.repo),
                     ...githubData.releases.map(r => r.repo)
-                ].filter(Boolean)).size : 0;
+                ].filter(Boolean)).size : 0);
 
             return {
                 type: 'Organization View',
@@ -41,11 +44,11 @@ export function RepositoryContextBanner({ repository, githubData }: RepositoryCo
         ].filter(Boolean)).size;
 
         return {
-            type: getRepositoryType(repository),
+            type: repositoryDetails?.language || getRepositoryType(repository),
             repositories: 1,
             contributors,
-            lastActivity: getLastActivityTime(githubData),
-            branch: 'main'
+            lastActivity: repositoryDetails?.updatedAt ? new Date(repositoryDetails.updatedAt) : getLastActivityTime(githubData),
+            branch: repositoryDetails?.defaultBranch || 'main'
         };
     };
 
@@ -82,9 +85,9 @@ export function RepositoryContextBanner({ repository, githubData }: RepositoryCo
     };
 
     const stats = getRepoStats();
-    const githubUrl = repository !== 'All'
-        ? `https://github.com/your-org/${repository}`
-        : 'https://github.com/your-org';
+    const githubUrl = repositoryDetails?.url || (repository !== 'All'
+        ? `https://github.com/${repository}`
+        : 'https://github.com');
 
     return (
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border rounded-lg p-4 mb-6">
@@ -95,12 +98,24 @@ export function RepositoryContextBanner({ repository, githubData }: RepositoryCo
                         <h3 className="text-lg font-bold">
                             {repository === 'All' ? 'All Repositories' : repository}
                         </h3>
-                        {repository !== 'All' && (
+                        {repositoryDetails?.isPrivate && (
+                            <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 text-xs rounded-full font-medium flex items-center gap-1">
+                                <Lock className="w-3 h-3" />
+                                Private
+                            </span>
+                        )}
+                        {repositoryDetails?.language && (
                             <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-xs rounded-full font-medium">
-                                {stats.type}
+                                {repositoryDetails.language}
                             </span>
                         )}
                     </div>
+
+                    {repositoryDetails?.description && (
+                        <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+                            {repositoryDetails.description}
+                        </p>
+                    )}
 
                     <div className="flex items-center gap-6 text-sm text-muted-foreground">
                         {repository === 'All' && stats.repositories > 0 && (
@@ -117,6 +132,24 @@ export function RepositoryContextBanner({ repository, githubData }: RepositoryCo
                                     {stats.contributors} active {stats.contributors === 1 ? 'contributor' : 'contributors'} this week
                                 </span>
                             </div>
+                        )}
+
+                        {repositoryDetails && (
+                            <>
+                                {repositoryDetails.stars > 0 && (
+                                    <div className="flex items-center gap-1.5">
+                                        <Star className="w-4 h-4" />
+                                        <span>{repositoryDetails.stars.toLocaleString()} stars</span>
+                                    </div>
+                                )}
+
+                                {repositoryDetails.forks > 0 && (
+                                    <div className="flex items-center gap-1.5">
+                                        <GitFork className="w-4 h-4" />
+                                        <span>{repositoryDetails.forks.toLocaleString()} forks</span>
+                                    </div>
+                                )}
+                            </>
                         )}
 
                         {stats.branch && (

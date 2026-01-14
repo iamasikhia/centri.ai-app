@@ -1,9 +1,15 @@
-import { Controller, Get, Post, Param, Body, Headers, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Headers, UnauthorizedException, Query } from '@nestjs/common';
 import { MeetingsService } from './meetings.service';
 
 @Controller('meetings')
 export class MeetingsController {
     constructor(private readonly meetingsService: MeetingsService) { }
+
+    @Get('next-prep')
+    async getNextMeetingPrep(@Headers('x-user-id') userId: string) {
+        if (!userId) throw new UnauthorizedException('User ID required');
+        return this.meetingsService.getNextMeetingWithPrep(userId);
+    }
 
     @Get()
     async findAll(@Headers('x-user-id') userId: string) {
@@ -27,5 +33,17 @@ export class MeetingsController {
     async analyze(@Headers('x-user-id') userId: string, @Param('id') id: string) {
         if (!userId) throw new UnauthorizedException('User ID required');
         return this.meetingsService.reanalyze(id, userId);
+    }
+
+    @Get(':id/prep')
+    async getPrep(@Headers('x-user-id') userId: string, @Param('id') id: string, @Query('url') url?: string) {
+        if (!userId) throw new UnauthorizedException('User ID required');
+        return this.meetingsService.getMeetingPrep(id, userId, url);
+    }
+
+    @Post(':id/generate-briefing')
+    async generateBriefing(@Headers('x-user-id') userId: string, @Param('id') id: string) {
+        if (!userId) throw new UnauthorizedException('User ID required');
+        return this.meetingsService.generateMeetingBriefing(id, userId);
     }
 }

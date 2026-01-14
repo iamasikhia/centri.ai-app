@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, Trash2, Play, Check, Clock, Hash, MessageCircle, Pencil } from "lucide-react";
+import { toast } from '@/hooks/use-toast';
 
 interface ScheduledQuestion {
     id: string;
@@ -108,15 +109,14 @@ export default function QuestionsPage() {
                 setEditingId(null);
                 setTitle(''); setText(''); setTargetId(''); setSelectedDays([]);
                 fetchData();
-                alert(editingId ? 'Question updated successfully!' : 'Question scheduled successfully!');
+                toast({ title: 'Success', description: editingId ? 'Question updated successfully!' : 'Question scheduled successfully!', variant: 'success' });
             } else {
                 const error = await res.text();
-                // console.error('Submit failed:', error);
-                alert(`Failed to ${editingId ? 'update' : 'create'} question: ${error}`);
+                toast({ title: 'Error', description: `Failed to ${editingId ? 'update' : 'create'} question: ${error}`, variant: 'destructive' });
             }
         } catch (e) {
             console.error('Submit error:', e);
-            alert(`Failed to ${editingId ? 'update' : 'create'} question. Check console for details.`);
+            toast({ title: 'Error', description: `Failed to ${editingId ? 'update' : 'create'} question. Check console for details.`, variant: 'destructive' });
         }
     };
 
@@ -158,13 +158,13 @@ export default function QuestionsPage() {
             });
             if (res.ok) {
                 fetchData();
-                alert('Question deleted successfully!');
+                toast({ title: 'Deleted', description: 'Question deleted successfully!', variant: 'success' });
             } else {
-                alert('Failed to delete question');
+                toast({ title: 'Error', description: 'Failed to delete question', variant: 'destructive' });
             }
         } catch (e) {
             console.error('Delete error:', e);
-            alert('Failed to delete question');
+            toast({ title: 'Error', description: 'Failed to delete question', variant: 'destructive' });
         }
     };
 
@@ -177,19 +177,18 @@ export default function QuestionsPage() {
             if (res.ok) {
                 const data = await res.json();
                 if (data.sent === 0) {
-                    alert(`Run complete! Sent: 0 question(s). \n(Nothing was due to be sent based on current schedules. Use the blue 'Test' button on a question to force send it.)`);
+                    toast({ title: 'Run Complete', description: 'Sent: 0 questions. Nothing was due based on current schedules.', variant: 'default' });
                 } else {
-                    alert(`Run complete! Sent: ${data.sent} question(s)`);
+                    toast({ title: 'Run Complete', description: `Sent: ${data.sent} question(s)`, variant: 'success' });
                 }
                 fetchData();
             } else {
                 const error = await res.text();
-                // console.error('Run failed:', error);
-                alert(`Failed to run check: ${error}`);
+                toast({ title: 'Error', description: `Failed to run check: ${error}`, variant: 'destructive' });
             }
         } catch (e) {
             console.error('Run error:', e);
-            alert('Failed to run check. Make sure Slack is connected.');
+            toast({ title: 'Error', description: 'Failed to run check. Make sure Slack is connected.', variant: 'destructive' });
         }
     };
 
@@ -201,15 +200,15 @@ export default function QuestionsPage() {
                 headers: { 'x-user-id': 'default-user-id' }
             });
             if (res.ok) {
-                alert('Test message sent successfully!');
+                toast({ title: 'Sent', description: 'Test message sent successfully!', variant: 'success' });
                 fetchData();
             } else {
                 const error = await res.text();
-                alert(`Failed to send test: ${error}`);
+                toast({ title: 'Error', description: `Failed to send test: ${error}`, variant: 'destructive' });
             }
         } catch (e) {
             console.error('Test error:', e);
-            alert('Failed to send test.');
+            toast({ title: 'Error', description: 'Failed to send test.', variant: 'destructive' });
         }
     };
 

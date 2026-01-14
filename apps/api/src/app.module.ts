@@ -12,6 +12,9 @@ import { PrismaService } from './prisma/prisma.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { EncryptionService } from './encryption/encryption.service';
 import { ScheduleModule } from '@nestjs/schedule';
+import { AnalyticsModule } from './analytics/analytics.module';
+import { StakeholderModule } from './stakeholders/stakeholder.module';
+import { ActionItemsModule } from './action-items/action-items.module';
 
 @Module({
     imports: [
@@ -26,6 +29,9 @@ import { ScheduleModule } from '@nestjs/schedule';
         TodosModule,
         FundraisingModule,
         MeetingsModule,
+        AnalyticsModule,
+        StakeholderModule,
+        ActionItemsModule,
     ],
     providers: [EncryptionService],
 })

@@ -140,4 +140,59 @@ Output EXCLUSIVELY strictly valid JSON.
             ]
         };
     }
+
+    async generateProfile(name: string, context: string = '') {
+        if (!this.openai) {
+            console.warn("No OpenAI Client for profile generation");
+            return null;
+        }
+
+        const systemPrompt = `
+You are an expert networking intelligence analyst. Start with the name provided and the context (URL or company).
+Construct a detailed professional profile for this person by leveraging your internal knowledge base. 
+Assume the persona of a briefing for a meeting.
+
+Output JSON with this exact structure:
+{
+  "person": {
+    "name": "Full Name",
+    "role": "Job Title",
+    "company": "Company Name",
+    "summary": "Professional Bio (2-3 sentences)",
+    "interests": ["Interest 1", "Interest 2"],
+    "conversationStarters": ["Question 1", "Question 2"]
+  },
+  "company": {
+    "name": "Company Name",
+    "industry": "Industry",
+    "recentNews": "Recent news or 'None found'"
+  }
+}
+
+Use the provided name and context (like a LinkedIn URL) to infer details. 
+If the person is specific and known, use real data.
+If the person is not famous, infer their likely role and industry based on the URL structure or name. 
+If context is sparse, generate a generic but realistic professional profile suitable for a business meeting briefing. Do not say 'I don't know'.
+`;
+
+        try {
+            const response = await this.openai.chat.completions.create({
+                model: "gpt-4o",
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: `Name: ${name}\nContext/URL: ${context}` }
+                ],
+                response_format: { type: "json_object" },
+                temperature: 0.7,
+            });
+
+            let content = response.choices[0].message.content;
+            if (!content) return null;
+            content = content.replace(/```json\n?|```/g, '').trim();
+            return JSON.parse(content);
+        } catch (e) {
+            console.error("Profile generation failed:", e);
+            return null;
+        }
+    }
 }

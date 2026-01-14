@@ -82,40 +82,58 @@ const PROVIDERS = [
   }
 ];
 
+import { useSession } from 'next-auth/react';
+
 export default function IntegrationsPage() {
+  const { data: session, status } = useSession();
   const [connections, setConnections] = useState<any[]>([]);
+  const [config, setConfig] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
 
-  const fetchStatus = async () => {
+  const userId = 'default-user-id'; // Temporarily use default ID to match existing integrations
+
+  const fetchData = async () => {
+    if (status === 'loading') return;
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:3001/integrations/status', {
-        headers: { 'x-user-id': 'default-user-id' }
-      });
-      if (res.ok) {
-        const json = await res.json();
+      const [statusRes, configRes] = await Promise.all([
+        fetch('http://localhost:3001/integrations/status', {
+          headers: { 'x-user-id': userId }
+        }),
+        fetch('http://localhost:3001/integrations/config')
+      ]);
+
+      if (statusRes.ok) {
+        const json = await statusRes.json();
         setConnections(json);
       }
+      if (configRes.ok) {
+        const json = await configRes.json();
+        setConfig(json);
+      }
     } catch (e) {
-      console.warn("Failed to fetch integration status", e);
+      console.warn("Failed to fetch integration data", e);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchStatus();
+    if (status !== 'loading') {
+      fetchData();
+    }
 
     // Refresh status when user returns to the page (after OAuth)
     const handleFocus = () => {
-      fetchStatus();
+      if (status !== 'loading') fetchData();
     };
 
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, []);
+  }, [status, userId]);
 
   const handleConnect = async (provider: string) => {
+    // ... existing handleConnect logic ...
     const stubs: string[] = [];
     if (stubs.includes(provider)) {
       const name = PROVIDERS.find(p => p.id === provider)?.name || provider;
@@ -125,8 +143,13 @@ export default function IntegrationsPage() {
     try {
       const res = await fetch(`http://localhost:3001/integrations/${provider}/connect`, {
         method: 'POST',
-        headers: { 'x-user-id': 'default-user-id' }
+        headers: { 'x-user-id': userId }
       });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.message || 'Connection failed');
+        return;
+      }
       const { url } = await res.json();
       window.location.href = url;
     } catch (e) {
@@ -138,37 +161,29 @@ export default function IntegrationsPage() {
     try {
       await fetch(`http://localhost:3001/integrations/${provider}/disconnect`, {
         method: 'POST',
-        headers: { 'x-user-id': 'default-user-id' }
+        headers: { 'x-user-id': userId }
       });
-      fetchStatus();
+      fetchData();
     } catch (e) {
       console.error("Disconnect failed", e);
     }
   };
 
   if (loading) {
+    // ... exisiting skeleton ...
     return (
       <div className="space-y-6 max-w-4xl mx-auto">
         <div>
           <Skeleton className="h-9 w-48 mb-2" />
           <Skeleton className="h-5 w-64" />
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {Array.from({ length: 15 }).map((_, i) => (
-            <div key={i} className="rounded-xl border bg-card text-card-foreground shadow-sm h-[200px] p-6 flex flex-col items-center gap-4">
-              <Skeleton className="w-16 h-16 rounded-xl" />
-              <div className="flex-1 w-full space-y-2">
-                <Skeleton className="h-5 w-24 mx-auto" />
-                <Skeleton className="h-3 w-full" />
-                <Skeleton className="h-3 w-2/3 mx-auto" />
-              </div>
-              <Skeleton className="h-8 w-full rounded-md mt-auto" />
-            </div>
-          ))}
-        </div>
+        {/* ... */}
       </div>
     );
   }
+
+  // Filter Providers
+  const visibleProviders = PROVIDERS.filter(p => config[p.id] !== false);
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -178,13 +193,14 @@ export default function IntegrationsPage() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-        {PROVIDERS.map(p => {
+        {visibleProviders.map(p => {
           const isConnected = connections.find(c => c.provider === p.id);
           // @ts-ignore
           const logoUrl = p.logoUrl || `https://logo.clearbit.com/${p.domain}`;
 
           return (
             <Card key={p.id} className="h-full hover:shadow-md transition-shadow">
+              {/* ... Card content ... */}
               <div className="flex flex-col items-center text-center p-6 h-full gap-4">
                 {/* Logo */}
                 <div className="w-16 h-16 rounded-xl bg-white border p-3 flex items-center justify-center shrink-0 shadow-sm">
