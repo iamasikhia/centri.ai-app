@@ -305,6 +305,37 @@ export class CodebaseController {
                 }
             }
 
+            // --- FETCH MEETING CONTEXT ---
+            let meetingContext = '';
+            try {
+                const recentMeetings = await this.prisma.meeting.findMany({
+                    where: {
+                        userId,
+                        startTime: { gte: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) }, // Last 2 weeks
+                        summary: { not: null }
+                    },
+                    orderBy: { startTime: 'desc' },
+                    take: 5,
+                    select: { title: true, startTime: true, summary: true, decisionsJson: true }
+                });
+
+                if (recentMeetings.length > 0) {
+                    meetingContext = `\n\n## Recent Meeting Context (What the team discussed):\n`;
+                    recentMeetings.forEach(m => {
+                        meetingContext += `\n### ${m.title} (${m.startTime.toISOString().split('T')[0]})\n`;
+                        meetingContext += `Summary: ${m.summary}\n`;
+                        if (m.decisionsJson) {
+                            try {
+                                const decisions = JSON.parse(m.decisionsJson);
+                                if (decisions.length > 0) meetingContext += `Decisions: ${decisions.join(', ')}\n`;
+                            } catch (e) { }
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error("Failed to fetch meeting context for chat", e);
+            }
+
             const systemPrompt = `You are Centri, an AI assistant specifically designed for non-technical Product Managers who need to understand their engineering team's codebase.
 
 ## Your Personality:
@@ -319,6 +350,7 @@ export class CodebaseController {
 - Identify what engineers are currently working on
 - Flag potential risks in non-technical language
 - Help prepare for technical discussions with the team
+- **Cross-reference code activity with meeting discussions** (e.g. "You discussed X in the meeting, and I see code for X here")
 
 ## Your Limitations (BE HONEST ABOUT THESE):
 - You are READ-ONLY and cannot modify any code
@@ -330,14 +362,16 @@ export class CodebaseController {
 1. Start with a direct answer, then provide context
 2. Use bullet points for clarity
 3. Avoid jargon - if you must use a technical term, explain it in parentheses
-4. End with a related follow-up question the PM might want to ask
-5. Keep responses focused and under 300 words unless asked for detail
+4. If the user asks about a feature discussed in a meeting, explicitly check if there is code for it.
+5. End with a related follow-up question the PM might want to ask
+6. Keep responses focused and under 300 words unless asked for detail
 
 ## Repository Context:
 **Repository:** ${repository}
 ${context ? `\n**PM-Friendly Summary:**\n${context}` : ''}
 ${analysisContext}
 ${repoContext}
+${meetingContext}
 
 Remember: The PM you're helping has important business decisions to make. Help them understand their product's technical side without overwhelming them.`;
 

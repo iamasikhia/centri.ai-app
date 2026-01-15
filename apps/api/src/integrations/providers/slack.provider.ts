@@ -14,7 +14,8 @@ export class SlackProvider implements IProvider {
   }
 
   // Method to Post Message
-  async postMessage(token: string, channelId: string, text: string): Promise<boolean> {
+  // Method to Post Message
+  async postMessage(token: string, channelId: string, text: string): Promise<{ ok: boolean; ts?: string; error?: string }> {
     try {
       const res = await axios.post('https://slack.com/api/chat.postMessage', {
         channel: channelId,
@@ -24,12 +25,12 @@ export class SlackProvider implements IProvider {
       });
       if (!res.data.ok) {
         console.warn(`[Slack] Failed to send message to ${channelId}:`, res.data.error);
-        throw new Error(res.data.error);
+        return { ok: false, error: res.data.error };
       }
-      return true;
+      return { ok: true, ts: res.data.ts };
     } catch (e) {
       console.error(`[Slack] Error sending message to ${channelId}:`, e.message);
-      throw new Error(e.message || 'Unknown network error');
+      return { ok: false, error: e.message || 'Unknown network error' };
     }
   }
 
@@ -49,6 +50,68 @@ export class SlackProvider implements IProvider {
       return [];
     } catch (e) {
       console.error(`[Slack] Error fetching history for ${channelId}:`, e.message);
+      return [];
+    }
+  }
+
+  /**
+   * Fetches threaded replies for a specific message.
+   * @param token Slack access token
+   * @param channelId Channel where the message was posted
+   * @param threadTs Timestamp of the parent message (the check-in)
+   * @returns Array of replies
+   */
+  async getThreadReplies(token: string, channelId: string, threadTs: string): Promise<any[]> {
+    try {
+      const res = await axios.get('https://slack.com/api/conversations.replies', {
+        headers: { Authorization: `Bearer ${token}` },
+        params: {
+          channel: channelId,
+          ts: threadTs, // The parent message timestamp
+          limit: 100
+        }
+      });
+      if (res.data.ok) {
+        // The first message in the array is the parent, rest are replies
+        return res.data.messages?.slice(1) || [];
+      }
+      console.warn(`[Slack] Failed to fetch thread replies for ${threadTs}:`, res.data.error);
+      return [];
+    } catch (e) {
+      console.error(`[Slack] Error fetching thread replies for ${threadTs}:`, e.message);
+      return [];
+    }
+  }
+
+  /**
+   * Fetches all channel messages that came AFTER a specific timestamp.
+   * This captures responses that aren't in a thread.
+   * @param token Slack access token  
+   * @param channelId Channel to fetch from
+   * @param afterTs Only fetch messages after this timestamp
+   * @param limit Max number of messages to fetch
+   * @returns Array of messages
+   */
+  async getMessagesAfter(token: string, channelId: string, afterTs: string, limit: number = 50): Promise<any[]> {
+    try {
+      const res = await axios.get('https://slack.com/api/conversations.history', {
+        headers: { Authorization: `Bearer ${token}` },
+        params: {
+          channel: channelId,
+          oldest: afterTs, // Only messages AFTER this timestamp
+          limit: limit,
+          inclusive: false // Don't include the message with the exact timestamp
+        }
+      });
+      if (res.data.ok) {
+        // Filter out bot messages and the original question message
+        const messages = res.data.messages || [];
+        return messages.filter((m: any) => !m.bot_id && m.ts !== afterTs);
+      }
+      console.warn(`[Slack] Failed to fetch messages after ${afterTs}:`, res.data.error);
+      return [];
+    } catch (e) {
+      console.error(`[Slack] Error fetching messages after ${afterTs}:`, e.message);
       return [];
     }
   }

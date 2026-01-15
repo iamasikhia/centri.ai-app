@@ -915,6 +915,65 @@ If the 'REAL DATA' object is empty or missing the requested info, explicitly sta
             }
         }
 
+        // --- MEETINGS & DECISIONS (Critical for PM Intelligence) ---
+        try {
+            this.logger.log('Fetching Meeting Decisions & Context...');
+            const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+            const meetings = await this.prisma.meeting.findMany({
+                where: { userId, startTime: { gte: twoWeeksAgo } },
+                orderBy: { startTime: 'desc' },
+                take: 10
+            });
+
+            if (meetings.length > 0) {
+                integrationData.meeting_intelligence = {
+                    recent_meetings: meetings.map(m => ({
+                        title: m.title,
+                        date: m.startTime,
+                        summary: m.summary,
+                        decisions: m.decisionsJson ? JSON.parse(m.decisionsJson as string) : [],
+                        action_items: m.actionItemsJson ? JSON.parse(m.actionItemsJson as string) : [],
+                        key_takeaways: m.highlightsJson ? JSON.parse(m.highlightsJson as string) : []
+                    }))
+                };
+                this.logger.log(`Added ${meetings.length} meetings to context`);
+            }
+        } catch (e) {
+            this.logger.error('Failed to fetch meeting intelligence', e);
+        }
+
+        // --- SLACK CHECK-IN RESPONSES (Team Pulse) ---
+        try {
+            this.logger.log('Fetching Slack Check-in Responses...');
+            const questions = await this.prisma.scheduledQuestion.findMany({
+                where: { userId },
+                include: { responses: { orderBy: { createdAt: 'desc' }, take: 20 } },
+                orderBy: { lastSentAt: 'desc' },
+                take: 5
+            });
+
+            if (questions.length > 0) {
+                const checkinsWithResponses = questions.filter(q => q.responses.length > 0);
+                if (checkinsWithResponses.length > 0) {
+                    integrationData.slack_checkins = {
+                        recent_checkins: checkinsWithResponses.map(q => ({
+                            question_title: q.title,
+                            question_text: q.text,
+                            last_sent: q.lastSentAt,
+                            team_responses: q.responses.map(r => ({
+                                user: r.slackUser,
+                                text: r.text,
+                                time: r.createdAt
+                            }))
+                        }))
+                    };
+                    this.logger.log(`Added ${checkinsWithResponses.length} check-ins with responses to context`);
+                }
+            }
+        } catch (e) {
+            this.logger.error('Failed to fetch Slack check-in responses', e);
+        }
+
         return {
             userContext: {
                 timezone: 'America/New_York',
@@ -928,19 +987,19 @@ If the 'REAL DATA' object is empty or missing the requested info, explicitly sta
 
     private detectTopic(query: string): string {
         const q = query.toLowerCase();
-        if (q.includes('meeting') || q.includes('calendar') || q.includes('schedule') || q.includes('appointment')) return 'calendar';
-        if (q.includes('slack') || q.includes('message') || q.includes('chat') || q.includes('dm') || q.includes('channel')) return 'slack';
+        if (q.includes('meeting') || q.includes('calendar') || q.includes('schedule') || q.includes('appointment') || q.includes('decided') || q.includes('discussion')) return 'calendar';
+        if (q.includes('slack') || q.includes('message') || q.includes('chat') || q.includes('dm') || q.includes('channel') || q.includes('check-in') || q.includes('checkin') || q.includes('team said') || q.includes('team update')) return 'slack';
 
         // Codebase Intelligence priority
         if (q.includes('architecture') || q.includes('structure') || q.includes('file') || q.includes('folder') || q.includes('codebase') || q.includes('repo') || q.includes('files') || q.includes('class') || q.includes('function') || q.includes('component') || q.includes('explain the code')) return 'codebase';
 
-        if (q.includes('github') || q.includes('pr') || q.includes('issue') || q.includes('commit') || q.includes('pull request')) return 'github';
+        if (q.includes('github') || q.includes('pr') || q.includes('issue') || q.includes('commit') || q.includes('pull request') || q.includes('merged') || q.includes('code changes')) return 'github';
         if (q.includes('email') || q.includes('gmail') || q.includes('inbox') || q.includes('unread')) return 'email';
         if (q.includes('transcript') || q.includes('recording') || q.includes('fathom') || q.includes('call summary')) return 'transcript';
         if (q.includes('stakeholder') || q.includes('client') || q.includes('contact') || q.includes('partner')) return 'stakeholder';
 
-        // Dashboard specific keywords
-        if (q.includes('dashboard') || q.includes('blocker') || q.includes('risk') || q.includes('attention') || q.includes('task') || q.includes('overview') || q.includes('stats') || q.includes('progress')) return 'dashboard';
+        // Dashboard specific keywords (broader for unified intelligence)
+        if (q.includes('dashboard') || q.includes('blocker') || q.includes('risk') || q.includes('attention') || q.includes('task') || q.includes('overview') || q.includes('stats') || q.includes('progress') || q.includes('team') || q.includes('engineering') || q.includes('what') || q.includes('status') || q.includes('update')) return 'dashboard';
 
         return 'general';
     }

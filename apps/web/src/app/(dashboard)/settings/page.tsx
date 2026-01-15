@@ -205,7 +205,12 @@ export default function SettingsPage() {
                             <Trash2 className="w-4 h-4 mr-2" />
                             Clear Stored Data
                         </Button>
-                        <Button variant="secondary" onClick={() => signOut({ callbackUrl: '/' })}>
+                        <Button variant="secondary" onClick={() => {
+                            localStorage.removeItem('onboarding_complete');
+                            localStorage.removeItem('user_goals');
+                            localStorage.removeItem('selected_integrations');
+                            signOut({ callbackUrl: '/' });
+                        }}>
                             <LogOut className="w-4 h-4 mr-2" />
                             Log Out
                         </Button>

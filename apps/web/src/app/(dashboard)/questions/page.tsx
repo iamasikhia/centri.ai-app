@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Trash2, Play, Check, Clock, Hash, MessageCircle, Pencil } from "lucide-react";
+import { Plus, Trash2, Play, Check, Clock, Hash, MessageCircle, Pencil, ChevronDown, ChevronUp, User, RefreshCw } from "lucide-react";
 import { toast } from '@/hooks/use-toast';
 
 interface ScheduledQuestion {
@@ -22,6 +22,13 @@ interface ScheduledQuestion {
 interface Channel {
     id: string;
     name: string;
+}
+
+interface QuestionResponse {
+    id: string;
+    slackUser: string;
+    text: string;
+    createdAt: string;
 }
 
 const DAYS = [
@@ -49,6 +56,11 @@ export default function QuestionsPage() {
     const [frequency, setFrequency] = useState('daily');
     const [timeOfDay, setTimeOfDay] = useState('09:00');
     const [selectedDays, setSelectedDays] = useState<string[]>([]);
+
+    // Response Viewer State
+    const [expandedQuestionId, setExpandedQuestionId] = useState<string | null>(null);
+    const [responses, setResponses] = useState<QuestionResponse[]>([]);
+    const [loadingResponses, setLoadingResponses] = useState(false);
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -120,7 +132,22 @@ export default function QuestionsPage() {
         }
     };
 
-    const handleEdit = (question: ScheduledQuestion) => {
+    const handleEdit = async (question: ScheduledQuestion) => {
+        // Ensure channels are loaded before editing
+        if (channels.length === 0) {
+            try {
+                const channelsRes = await fetch(`${API_URL}/slack/channels`, {
+                    headers: { 'x-user-id': 'default-user-id' }
+                });
+                if (channelsRes.ok) {
+                    const data = await channelsRes.json();
+                    setChannels(data.channels || []);
+                }
+            } catch (e) {
+                console.error('Failed to fetch channels for edit:', e);
+            }
+        }
+
         setEditingId(question.id);
         setTitle(question.title);
         setText(question.text);
@@ -209,6 +236,39 @@ export default function QuestionsPage() {
         } catch (e) {
             console.error('Test error:', e);
             toast({ title: 'Error', description: 'Failed to send test.', variant: 'destructive' });
+        }
+    };
+
+    const fetchResponses = async (questionId: string) => {
+        setLoadingResponses(true);
+        try {
+            const res = await fetch(`${API_URL}/slack/questions/${questionId}/responses`, {
+                headers: { 'x-user-id': 'default-user-id' }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setResponses(data.responses || []);
+            } else {
+                console.error('Failed to fetch responses');
+                setResponses([]);
+            }
+        } catch (e) {
+            console.error('Fetch responses error:', e);
+            setResponses([]);
+        } finally {
+            setLoadingResponses(false);
+        }
+    };
+
+    const toggleResponses = async (questionId: string) => {
+        if (expandedQuestionId === questionId) {
+            // Collapse
+            setExpandedQuestionId(null);
+            setResponses([]);
+        } else {
+            // Expand and fetch
+            setExpandedQuestionId(questionId);
+            await fetchResponses(questionId);
         }
     };
 
@@ -323,14 +383,22 @@ export default function QuestionsPage() {
                                 <div>
                                     <label className="text-sm font-medium mb-1 block">Post To</label>
                                     <select
-                                        className="w-full px-3 py-2 border rounded-md bg-card"
-                                        value={targetId} onChange={e => setTargetId(e.target.value)} required
+                                        className="w-full px-3 py-2 border rounded-md bg-card disabled:opacity-50"
+                                        value={targetId}
+                                        onChange={e => setTargetId(e.target.value)}
+                                        required
+                                        disabled={channels.length === 0}
                                     >
-                                        <option value="">Select a Channel...</option>
+                                        <option value="">
+                                            {channels.length === 0 ? 'Loading channels...' : 'Select a Channel...'}
+                                        </option>
                                         {channels.map(c => (
                                             <option key={c.id} value={c.id}>#{c.name}</option>
                                         ))}
                                     </select>
+                                    {channels.length === 0 && (
+                                        <p className="text-xs text-amber-600 mt-1">Make sure Slack is connected in Settings.</p>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="text-sm font-medium mb-1 block">Time (Approx)</label>
@@ -371,51 +439,120 @@ export default function QuestionsPage() {
 
                 {questions.map(q => (
                     <Card key={q.id} className="hover:shadow-sm transition-shadow">
-                        <CardContent className="p-6 flex items-start gap-4">
-                            <div className="p-3 bg-primary/10 rounded-full text-primary shrink-0">
-                                <Clock className="w-6 h-6" />
-                            </div>
-                            <div className="flex-1">
-                                <div className="flex items-center justify-between mb-1">
-                                    <h3 className="font-semibold text-lg">{q.title}</h3>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs px-2 py-1 bg-muted rounded uppercase font-medium text-muted-foreground">{q.frequency}</span>
-                                        <button onClick={() => handleTestRun(q.id)} className="text-blue-500 hover:text-blue-600 p-1" title="Test Run Now (Force)">
-                                            <Play className="w-4 h-4" />
-                                        </button>
-                                        <button onClick={() => handleEdit(q)} className="text-primary hover:text-primary/80 p-1" title="Edit">
-                                            <Pencil className="w-4 h-4" />
-                                        </button>
-                                        <button onClick={() => handleDelete(q.id)} className="text-destructive hover:text-destructive/80 p-1" title="Delete">
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
+                        <CardContent className="p-6">
+                            <div className="flex items-start gap-4">
+                                <div className="p-3 bg-primary/10 rounded-full text-primary shrink-0">
+                                    <Clock className="w-6 h-6" />
                                 </div>
-                                <p className="text-muted-foreground mb-3">{q.text}</p>
-                                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                                    <div className="flex items-center gap-1">
-                                        <Hash className="w-3 h-3" />
-                                        <span>
-                                            {channels.find(c => c.id === q.targetId)?.name || 'Unknown Channel'}
-                                        </span>
+                                <div className="flex-1">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <h3 className="font-semibold text-lg">{q.title}</h3>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs px-2 py-1 bg-muted rounded uppercase font-medium text-muted-foreground">{q.frequency}</span>
+                                            <button onClick={() => handleTestRun(q.id)} className="text-blue-500 hover:text-blue-600 p-1" title="Test Run Now (Force)">
+                                                <Play className="w-4 h-4" />
+                                            </button>
+                                            <button onClick={() => handleEdit(q)} className="text-primary hover:text-primary/80 p-1" title="Edit">
+                                                <Pencil className="w-4 h-4" />
+                                            </button>
+                                            <button onClick={() => handleDelete(q.id)} className="text-destructive hover:text-destructive/80 p-1" title="Delete">
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-1">
-                                        <Clock className="w-3 h-3" />
-                                        <span>{q.timeOfDay}</span>
-                                    </div>
-                                    {q.selectedDays && q.selectedDays.length > 0 && (
+                                    <p className="text-muted-foreground mb-3">{q.text}</p>
+                                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
                                         <div className="flex items-center gap-1">
-                                            <Clock className="w-3 h-3 text-primary" />
-                                            <span className="text-primary">{q.selectedDays.join(', ')}</span>
+                                            <Hash className="w-3 h-3" />
+                                            <span>
+                                                {channels.find(c => c.id === q.targetId)?.name || 'Unknown Channel'}
+                                            </span>
                                         </div>
+                                        <div className="flex items-center gap-1">
+                                            <Clock className="w-3 h-3" />
+                                            <span>{q.timeOfDay}</span>
+                                        </div>
+                                        {q.selectedDays && q.selectedDays.length > 0 && (
+                                            <div className="flex items-center gap-1">
+                                                <Clock className="w-3 h-3 text-primary" />
+                                                <span className="text-primary">{q.selectedDays.join(', ')}</span>
+                                            </div>
+                                        )}
+                                        {q.lastSentAt && (
+                                            <div className="text-xs text-success">
+                                                Last sent: {new Date(q.lastSentAt).toLocaleDateString()}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* View Responses Button */}
+                            <div className="mt-4 pt-4 border-t">
+                                <button
+                                    onClick={() => toggleResponses(q.id)}
+                                    className="flex items-center gap-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                                >
+                                    <MessageCircle className="w-4 h-4" />
+                                    View Responses
+                                    {expandedQuestionId === q.id ? (
+                                        <ChevronUp className="w-4 h-4" />
+                                    ) : (
+                                        <ChevronDown className="w-4 h-4" />
                                     )}
-                                    {q.lastSentAt && (
-                                        <div className="text-xs text-success">
-                                            Last sent: {new Date(q.lastSentAt).toLocaleDateString()}
+                                </button>
+                            </div>
+
+                            {/* Responses Section */}
+                            {expandedQuestionId === q.id && (
+                                <div className="mt-4 p-4 bg-muted/30 rounded-lg border">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h4 className="font-medium text-sm">Team Responses</h4>
+                                        <button
+                                            onClick={() => fetchResponses(q.id)}
+                                            className="text-xs flex items-center gap-1 text-muted-foreground hover:text-primary transition-colors"
+                                            disabled={loadingResponses}
+                                        >
+                                            <RefreshCw className={`w-3 h-3 ${loadingResponses ? 'animate-spin' : ''}`} />
+                                            Refresh
+                                        </button>
+                                    </div>
+
+                                    {loadingResponses ? (
+                                        <div className="space-y-2">
+                                            <Skeleton className="h-12 w-full" />
+                                            <Skeleton className="h-12 w-full" />
+                                        </div>
+                                    ) : responses.length === 0 ? (
+                                        <div className="text-center py-6 text-muted-foreground">
+                                            <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                            <p className="text-sm">No responses yet</p>
+                                            <p className="text-xs mt-1">Responses will appear here when team members reply in the Slack thread.</p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3 max-h-96 overflow-y-auto">
+                                            {responses.map((r) => (
+                                                <div key={r.id} className="p-3 bg-card rounded-lg border">
+                                                    <div className="flex items-start gap-3">
+                                                        <div className="p-2 bg-primary/10 rounded-full">
+                                                            <User className="w-4 h-4 text-primary" />
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <span className="font-medium text-sm">{r.slackUser}</span>
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    {new Date(r.createdAt).toLocaleString()}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-sm text-foreground/90">{r.text}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     )}
                                 </div>
-                            </div>
+                            )}
                         </CardContent>
                     </Card>
                 ))}

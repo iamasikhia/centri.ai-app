@@ -41,6 +41,10 @@ export function Sidebar() {
     }, []);
 
     const handleLogout = async () => {
+        // Clear onboarding flag so it triggers on next login
+        localStorage.removeItem('onboarding_complete');
+        localStorage.removeItem('user_goals');
+        localStorage.removeItem('selected_integrations');
         await signOut({ callbackUrl: '/', redirect: true });
     };
 

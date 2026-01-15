@@ -158,10 +158,24 @@ model ScheduledQuestion {
   selectedDays  String[] // Array of days e.g. ["Mon", "Fri"]
   isActive      Boolean  @default(true)
   lastSentAt    DateTime?
+  lastMessageTs String?  // Slack Timestamp of the last sent message
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  responses QuestionResponse[]
+}
+
+model QuestionResponse {
+  id                String   @id @default(uuid())
+  questionId        String
+  userId            String?  // ID of the user who responded (if mapped)
+  slackUser         String?  // Slack User ID
+  text              String
+  slackTs           String   // Timestamp of the reply
+  createdAt         DateTime @default(now())
+
+  question ScheduledQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 }
 
 model Todo {

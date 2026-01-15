@@ -3,6 +3,10 @@ import { IntegrationsService } from './integrations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EncryptionService } from '../encryption/encryption.service';
 
+// Simple in-memory cache for Slack channels to prevent rate limiting
+const channelCache: Map<string, { data: any; timestamp: number }> = new Map();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 @Controller('slack')
 export class SlackController {
     constructor(
@@ -13,14 +17,23 @@ export class SlackController {
 
     @Get('channels')
     async getChannels(@Headers('x-user-id') userId: string) {
+        const uid = userId || 'default-user-id';
+
+        // Check cache first
+        const cached = channelCache.get(uid);
+        if (cached && (Date.now() - cached.timestamp) < CACHE_TTL_MS) {
+            console.log('[Slack] Returning cached channels for user:', uid);
+            return cached.data;
+        }
+
         try {
-            console.log('[Slack] Fetching channels for user:', userId || 'default-user-id');
+            console.log('[Slack] Fetching channels for user:', uid);
 
             // Get Slack integration for user
             const integration = await this.prisma.integrations.findUnique({
                 where: {
                     userId_provider: {
-                        userId: userId || 'default-user-id',
+                        userId: uid,
                         provider: 'slack',
                     },
                 },
@@ -42,12 +55,27 @@ export class SlackController {
 
             console.log('[Slack] Sync complete. Channels:', syncResult.customData?.channels?.length || 0, 'Members:', syncResult.teamMembers?.length || 0);
 
-            return {
+            const result = {
                 channels: syncResult.customData?.channels || [],
                 members: syncResult.teamMembers || [],
             };
+
+            // Cache the result (only if we got data)
+            if (result.channels.length > 0) {
+                channelCache.set(uid, { data: result, timestamp: Date.now() });
+            }
+
+            return result;
         } catch (error) {
             console.error('[Slack] Error in getChannels:', error);
+
+            // If we hit rate limit, return cached data if available (even if stale)
+            const staleCache = channelCache.get(uid);
+            if (staleCache && error.message?.includes('429')) {
+                console.log('[Slack] Returning stale cache due to rate limit');
+                return staleCache.data;
+            }
+
             throw error;
         }
     }
@@ -195,10 +223,13 @@ export class SlackController {
             }
 
             let success = false;
+            let messageTs: string | null = null;
             // Send Message
             if (q.targetType === 'channel' && q.targetId) {
                 console.log(`[Slack] Sending question "${q.title}" to channel ${q.targetId}`);
-                success = await slackProvider.postMessage(tokens.access_token, q.targetId, q.text);
+                const postResult = await slackProvider.postMessage(tokens.access_token, q.targetId, q.text);
+                success = postResult.ok;
+                messageTs = postResult.ts || null;
             } else if (q.targetType === 'dm') {
                 // Send to all team members? Or specific? MVP: Send to a default channel or warn
                 console.warn('[Slack] DM broadcasting not fully implemented yet, skipping');
@@ -206,11 +237,11 @@ export class SlackController {
 
             if (success) {
                 sentCount++;
-                results.push({ id: q.id, status: 'sent' });
-                // Update lastSentAt
+                results.push({ id: q.id, status: 'sent', messageTs });
+                // Update lastSentAt AND lastMessageTs (to track replies later)
                 await this.prisma.scheduledQuestion.update({
                     where: { id: q.id },
-                    data: { lastSentAt: new Date() }
+                    data: { lastSentAt: new Date(), lastMessageTs: messageTs }
                 });
             } else {
                 results.push({ id: q.id, status: 'failed' });
@@ -267,11 +298,16 @@ export class SlackController {
         const slackProvider = this.integrationsService.getProvider('slack') as any;
 
         let success = false;
+        let messageTs: string | null = null;
         try {
             if (question.targetType === 'channel' && question.targetId) {
                 console.log(`[Slack] Test sending "${question.title}" to ${question.targetId}`);
-                await slackProvider.postMessage(tokens.access_token, question.targetId, question.text);
-                success = true;
+                const result = await slackProvider.postMessage(tokens.access_token, question.targetId, question.text);
+                success = result.ok;
+                messageTs = result.ts || null;
+                if (!success) {
+                    throw new Error(result.error || 'Failed to post message');
+                }
             } else {
                 throw new Error('Unsupported target type for test');
             }
@@ -280,12 +316,12 @@ export class SlackController {
         }
 
         if (success) {
-            // Optional: Update lastSentAt even for tests? Maybe yes, to reflect activity.
+            // Update lastSentAt AND lastMessageTs to track replies
             await this.prisma.scheduledQuestion.update({
                 where: { id: question.id },
-                data: { lastSentAt: new Date() }
+                data: { lastSentAt: new Date(), lastMessageTs: messageTs }
             });
-            return { status: 'success', message: 'Test message sent' };
+            return { status: 'success', message: 'Test message sent', messageTs };
         } else {
             throw new Error('Failed to send message to Slack');
         }
@@ -301,5 +337,106 @@ export class SlackController {
         });
     }
 
+    /**
+     * Fetch responses to a check-in question from Slack.
+     * This retrieves BOTH threaded replies AND channel messages sent after the question.
+     */
+    @Get('questions/:id/responses')
+    async getQuestionResponses(@Headers('x-user-id') userId: string, @Param('id') id: string) {
+        const uid = userId || 'default-user-id';
+
+        // 1. Get the question
+        const question = await this.prisma.scheduledQuestion.findFirst({
+            where: { id, userId: uid },
+            include: { responses: { orderBy: { createdAt: 'desc' } } }
+        });
+
+        if (!question) throw new NotFoundException('Question not found');
+
+        // 2. If we have a lastMessageTs, fetch fresh replies from Slack
+        if (question.lastMessageTs && question.targetId) {
+            const integration = await this.prisma.integrations.findUnique({
+                where: { userId_provider: { userId: uid, provider: 'slack' } }
+            });
+
+            if (integration) {
+                const tokens = JSON.parse(this.encryption.decrypt(integration.encryptedBlob));
+                const slackProvider = this.integrationsService.getProvider('slack') as any;
+
+                // Fetch BOTH threaded replies AND channel messages after the question
+                const [threadReplies, channelMessages] = await Promise.all([
+                    slackProvider.getThreadReplies(
+                        tokens.access_token,
+                        question.targetId,
+                        question.lastMessageTs
+                    ),
+                    slackProvider.getMessagesAfter(
+                        tokens.access_token,
+                        question.targetId,
+                        question.lastMessageTs,
+                        30 // Limit to 30 messages after the question
+                    )
+                ]);
+
+                console.log(`[Slack] Found ${threadReplies.length} thread replies and ${channelMessages.length} channel messages`);
+
+                // Combine both sources and deduplicate by timestamp
+                const allMessages = [...threadReplies, ...channelMessages];
+                const uniqueMessages = new Map();
+                allMessages.forEach(m => {
+                    if (!uniqueMessages.has(m.ts)) {
+                        uniqueMessages.set(m.ts, m);
+                    }
+                });
+
+                // 3. Store any NEW replies (check if slackTs already exists)
+                const existingTs = new Set(question.responses.map(r => r.slackTs));
+
+                for (const [ts, msg] of uniqueMessages.entries()) {
+                    if (!existingTs.has(ts) && msg.text) {
+                        await this.prisma.questionResponse.create({
+                            data: {
+                                questionId: question.id,
+                                slackUser: msg.user || 'Unknown',
+                                text: msg.text,
+                                slackTs: ts,
+                            }
+                        });
+                    }
+                }
+
+                // 4. Re-fetch responses after update
+                const updatedResponses = await this.prisma.questionResponse.findMany({
+                    where: { questionId: question.id },
+                    orderBy: { createdAt: 'desc' }
+                });
+
+                return {
+                    questionId: question.id,
+                    questionTitle: question.title,
+                    lastSentAt: question.lastSentAt,
+                    responses: updatedResponses.map(r => ({
+                        id: r.id,
+                        slackUser: r.slackUser,
+                        text: r.text,
+                        createdAt: r.createdAt.toISOString()
+                    }))
+                };
+            }
+        }
+
+        // Fallback: Return stored responses without fresh fetch
+        return {
+            questionId: question.id,
+            questionTitle: question.title,
+            lastSentAt: question.lastSentAt,
+            responses: question.responses.map(r => ({
+                id: r.id,
+                slackUser: r.slackUser,
+                text: r.text,
+                createdAt: r.createdAt.toISOString()
+            }))
+        };
+    }
 
 }

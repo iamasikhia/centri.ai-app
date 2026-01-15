@@ -206,9 +206,10 @@ function ActivityRow({ activity, showRepo }: { activity: ActivityItem; showRepo:
                                         #{activity.metadata.number}
                                     </span>
                                 )}
-                                {activity.metadata?.sha && (
-                                    <span className="text-xs font-mono text-muted-foreground/60">
-                                        {activity.metadata.sha}
+                                {/* SHA removed for PM friendliness unless it's the only identifier */}
+                                {activity.type === 'commit' && !activity.metadata?.number && (
+                                    <span className="text-xs font-mono text-muted-foreground/40">
+                                        Commit
                                     </span>
                                 )}
                                 {showRepo && activity.repo && (

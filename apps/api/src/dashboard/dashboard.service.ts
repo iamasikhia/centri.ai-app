@@ -5,8 +5,17 @@ import { GithubIntelligenceService } from '../integrations/github-intelligence.s
 import { IntegrationsService } from '../integrations/integrations.service';
 import { GithubProvider } from '../integrations/providers/github.provider';
 
+// Simple in-memory cache for dashboard data
+interface CacheEntry {
+    data: any;
+    timestamp: number;
+}
+
 @Injectable()
 export class DashboardService {
+    private dashboardCache = new Map<string, CacheEntry>();
+    private readonly CACHE_TTL_MS = 30000; // 30 seconds cache
+
     constructor(
         private prisma: PrismaService,
         private integrationsService: IntegrationsService,
@@ -14,6 +23,14 @@ export class DashboardService {
     ) { }
 
     async getDashboardData(userId: string, range: string = 'week') {
+        // Check cache first
+        const cacheKey = `${userId}:${range}`;
+        const cached = this.dashboardCache.get(cacheKey);
+        if (cached && Date.now() - cached.timestamp < this.CACHE_TTL_MS) {
+            console.log(`[Dashboard] Returning cached data for ${userId}`);
+            return cached.data;
+        }
+
         const today = new Date();
         let startDate = startOfWeek(today); // Default
 
@@ -186,7 +203,43 @@ export class DashboardService {
             }
         }, 0);
 
-        return {
+        // --- REALITY CHECK (Alignment Analysis) ---
+        const realityCheck: any[] = [];
+        if (githubIntelligence && githubIntelligence.initiatives) {
+            const activeInitiatives = (githubIntelligence.initiatives as any[]).map(i => i.name.toLowerCase());
+
+            // Check recent High-Level decisions for alignment
+            // We focus on decisions that imply work ("build", "implement", "fix")
+            meetings.forEach(m => {
+                if (m.decisions && Array.isArray(m.decisions)) {
+                    m.decisions.forEach((d: string) => {
+                        const decisionLower = d.toLowerCase();
+                        // Filter for actionable decisions
+                        if (decisionLower.includes('approve') || decisionLower.includes('agree') || decisionLower.includes('decide')) {
+                            // Extract potential topics
+                            const keywords = decisionLower.split(' ')
+                                .filter(w => w.length > 4) // Filter out small words
+                                .filter(w => !['decided', 'agreed', 'approved', 'meeting', 'team'].includes(w));
+
+                            const isAligned = activeInitiatives.some(init => keywords.some(k => init.includes(k)));
+
+                            if (!isAligned && keywords.length > 0) {
+                                realityCheck.push({
+                                    id: `check-${m.id}-${keywords[0]}`,
+                                    type: 'disconnect',
+                                    title: 'Potential Disconnect',
+                                    message: `Team decided "${d}", but no matching engineering initiative was detected this week.`,
+                                    severity: 'Medium',
+                                    sourceMeeting: m.title
+                                });
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+        const result = {
             lastSyncedAt: lastSync?.finishedAt?.toISOString() || null,
             people,
             tasks,
@@ -194,12 +247,19 @@ export class DashboardService {
             updates,
             githubIntelligence,
             totalDecisions,
-            totalBlockers, // New Field
+            totalBlockers,
+            realityCheck, // New AI Insight Field
             focusTasks: [],
             blockers: [],
             teamStats: [],
             teamMembers: []
         };
+
+        // Cache the result
+        this.dashboardCache.set(cacheKey, { data: result, timestamp: Date.now() });
+        console.log(`[Dashboard] Cached data for ${userId}`);
+
+        return result;
     }
     async generateWeekReport(userId: string) {
         const data = await this.getDashboardData(userId, 'week');
@@ -266,5 +326,187 @@ export class DashboardService {
         const docTitle = title || `Weekly Report - ${new Date().toLocaleDateString()}`;
 
         return await provider.createDocument(token, docTitle, content);
+    }
+
+    /**
+     * UNIFIED INTELLIGENCE SUMMARY
+     * The "magic" cross-source synthesis that brings everything together.
+     * This is the killer feature that justifies the platform.
+     */
+    async getUnifiedIntelligence(userId: string) {
+        // Check cache first
+        const cacheKey = `intelligence:${userId}`;
+        const cached = this.dashboardCache.get(cacheKey);
+        if (cached && Date.now() - cached.timestamp < this.CACHE_TTL_MS) {
+            console.log(`[Intelligence] Returning cached data for ${userId}`);
+            return cached.data;
+        }
+
+        const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+        // 1. Fetch from all sources in parallel
+        const [meetings, checkins, dashboardData] = await Promise.all([
+            // Meetings with decisions
+            this.prisma.meeting.findMany({
+                where: { userId, startTime: { gte: oneWeekAgo } },
+                orderBy: { startTime: 'desc' },
+                take: 10
+            }),
+            // Check-ins with responses
+            this.prisma.scheduledQuestion.findMany({
+                where: { userId },
+                include: { responses: { orderBy: { createdAt: 'desc' }, take: 30 } },
+                orderBy: { lastSentAt: 'desc' },
+                take: 5
+            }),
+            // GitHub and other data
+            this.getDashboardData(userId, 'week')
+        ]);
+
+        // 2. Extract key decisions from meetings
+        const decisions: any[] = [];
+        meetings.forEach(m => {
+            if (m.decisionsJson) {
+                try {
+                    const parsed = JSON.parse(m.decisionsJson as string);
+                    if (Array.isArray(parsed)) {
+                        parsed.forEach(d => {
+                            decisions.push({
+                                text: typeof d === 'string' ? d : d.text || d.decision,
+                                meeting: m.title,
+                                date: m.startTime
+                            });
+                        });
+                    }
+                } catch (e) { }
+            }
+        });
+
+        // 3. Fetch team members for name resolution (from TeamMember table)
+        const teamMembers = await this.prisma.teamMember.findMany({
+            where: { userId }
+        });
+        const memberMap = new Map<string, string>();
+        teamMembers.forEach(m => {
+            if (m.externalId) {
+                memberMap.set(m.externalId, m.name);
+            }
+        });
+
+        // Also try to get names from Slack integration if TeamMember is empty
+        if (memberMap.size === 0) {
+            try {
+                const slackIntegration = await this.prisma.integrations.findUnique({
+                    where: { userId_provider: { userId, provider: 'slack' } }
+                });
+                if (slackIntegration) {
+                    // Import encryption service - get from integrationsService
+                    const tokens = JSON.parse((this.integrationsService as any).encryption?.decrypt(slackIntegration.encryptedBlob) || '{}');
+                    if (tokens.access_token) {
+                        const slackProvider = this.integrationsService.getProvider('slack') as any;
+                        const syncResult = await slackProvider.syncData(userId, tokens);
+                        if (syncResult.teamMembers) {
+                            syncResult.teamMembers.forEach((m: any) => {
+                                if (m.externalId) {
+                                    memberMap.set(m.externalId, m.name);
+                                }
+                            });
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to fetch Slack members for name resolution');
+            }
+        }
+
+        // Helper to resolve Slack user ID to name
+        const resolveName = (slackId: string) => memberMap.get(slackId) || slackId;
+
+        // 4. Extract team pulse from check-in responses
+        const teamPulse: any[] = [];
+        checkins.forEach(q => {
+            if (q.responses.length > 0) {
+                teamPulse.push({
+                    question: q.title,
+                    responses: q.responses.map(r => ({
+                        user: resolveName(r.slackUser),
+                        userId: r.slackUser,
+                        text: r.text,
+                        time: r.createdAt
+                    }))
+                });
+            }
+        });
+
+        // 4. Extract GitHub activity summary
+        const githubSummary = {
+            weeklyBrief: dashboardData.githubIntelligence?.weeklyBrief || 'No GitHub activity this week',
+            initiatives: dashboardData.githubIntelligence?.initiatives || [],
+            metrics: dashboardData.githubIntelligence?.metrics || {}
+        };
+
+        // 5. Create cross-reference insights (the magic!)
+        const crossReferenceInsights: any[] = [];
+
+        // Check if any decision keywords match GitHub initiatives
+        const initiativeNames = (githubSummary.initiatives as any[])
+            .map((i: any) => i.name?.toLowerCase() || '');
+
+        decisions.forEach(d => {
+            const decisionWords = d.text.toLowerCase().split(' ')
+                .filter((w: string) => w.length > 4);
+
+            initiativeNames.forEach(init => {
+                if (decisionWords.some((w: string) => init.includes(w))) {
+                    crossReferenceInsights.push({
+                        type: 'decision_matched',
+                        icon: '✅',
+                        message: `Decision "${d.text.substring(0, 50)}..." aligns with GitHub work on "${init}"`,
+                        source: d.meeting
+                    });
+                }
+            });
+        });
+
+        // Check if team responses mention any initiatives
+        teamPulse.forEach(q => {
+            q.responses.forEach((r: any) => {
+                const responseWords = r.text.toLowerCase().split(' ');
+                initiativeNames.forEach(init => {
+                    if (responseWords.some((w: string) => init.includes(w) && w.length > 3)) {
+                        crossReferenceInsights.push({
+                            type: 'team_aligned',
+                            icon: '👥',
+                            message: `Team member mentioned "${init}" in check-in response`,
+                            source: q.question
+                        });
+                    }
+                });
+            });
+        });
+
+        // 6. Generate Executive Summary using patterns
+        const summary = {
+            meetingsThisWeek: meetings.length,
+            decisionsCount: decisions.length,
+            teamResponsesCount: teamPulse.reduce((acc, q) => acc + q.responses.length, 0),
+            githubActivity: githubSummary.metrics,
+            crossReferenceCount: crossReferenceInsights.length
+        };
+
+        const result = {
+            timestamp: new Date().toISOString(),
+            summary,
+            decisions: decisions.slice(0, 10),
+            teamPulse: teamPulse.slice(0, 5),
+            githubSummary,
+            crossReferenceInsights: crossReferenceInsights.slice(0, 10),
+            realityCheck: dashboardData.realityCheck || []
+        };
+
+        // Cache the result
+        this.dashboardCache.set(cacheKey, { data: result, timestamp: Date.now() });
+
+        return result;
     }
 }

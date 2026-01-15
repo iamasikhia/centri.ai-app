@@ -24,4 +24,14 @@ export class DashboardController {
         const url = await this.dashboardService.exportReportToDocs(userId, body.content, body.title);
         return { url };
     }
+
+    /**
+     * UNIFIED INTELLIGENCE ENDPOINT
+     * Returns cross-source synthesis of Meetings + GitHub + Slack Check-ins
+     */
+    @Get('intelligence')
+    async getUnifiedIntelligence(@Req() req) {
+        const userId = req.headers['x-user-id'] || 'default-user-id';
+        return this.dashboardService.getUnifiedIntelligence(userId);
+    }
 }

@@ -27,6 +27,8 @@ import { RecentActivityFeed } from '@/components/dashboard/recent-activity-feed'
 import { RepositoryContextBanner } from '@/components/dashboard/repository-context-banner';
 import { UpcomingCalls } from '@/components/dashboard/upcoming-calls';
 import { MeetingPrepCard } from '@/components/dashboard/meeting-prep-card';
+import UnifiedIntelligence from '@/components/dashboard/unified-intelligence';
+import { OnboardingOverlay } from '@/components/dashboard/onboarding-overlay';
 
 // --- Components ---
 
@@ -200,6 +202,16 @@ export default function DashboardPage() {
     } | null>(null);
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
+    // Onboarding State
+    const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(true); // Default to true to prevent flash
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const completed = localStorage.getItem('onboarding_complete') === 'true';
+            setHasCompletedOnboarding(completed);
+        }
+    }, []);
+
     const displayedMetrics = useMemo(() => {
         if (!viewModel) return [];
         if (selectedRepo === 'All' || !viewModel.githubRawData) return viewModel.executive.metrics;
@@ -277,8 +289,8 @@ export default function DashboardPage() {
         if (!viewModel) return null;
         if (selectedRepo === 'All') return viewModel.momentum;
 
-        // For specific repo, use filtered data and EMPTY tasks/meetings to scope to repo activity strictly
-        return calculateExecutionMomentum(filteredGithubData, [], []);
+        // For specific repo, use filtered data but keep meetings global as requested
+        return calculateExecutionMomentum(filteredGithubData, [], viewModel.meetings || []);
     }, [viewModel, selectedRepo, filteredGithubData]);
 
     // Actual usage derivedMomentum for rendering
@@ -317,8 +329,6 @@ export default function DashboardPage() {
         const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
         try {
             setLoading(true);
-            // Mock delay
-            await new Promise(r => setTimeout(r, 600));
             const res = await fetch(`${API_URL}/dashboard?range=${timeRange}`, { headers: { 'x-user-id': 'default-user-id' } });
 
             // Fallback for mocked FE if network fails or endpoint doesn't return new format
@@ -476,42 +486,17 @@ export default function DashboardPage() {
 
                 {/* 3. Team Momentum & Recent Activity (2/3) */}
                 <div className="xl:col-span-2 space-y-6">
-                    {/* Team Momentum */}
-                    <div className="space-y-6">
+                    {/* Combined Team Intelligence Section */}
+                    <div className="space-y-4">
                         <h2 className="text-lg font-bold flex items-center gap-2">
                             <Activity className="w-5 h-5 text-muted-foreground" />
-                            Team Momentum
+                            Work Intelligence
                         </h2>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <MomentumStat
-                                label="Meetings This Week"
-                                value={momentumToDisplay.meetingsCompleted}
-                                icon={Mic}
-                                colorClass="text-blue-500"
-                                source="Calendar"
-                            />
-                            <MomentumStat
-                                label="PRs Merged"
-                                value={momentumToDisplay.prsMerged}
-                                icon={GitMerge}
-                                colorClass="text-purple-500"
-                                source="GitHub"
-                            />
-                            <MomentumStat
-                                label="Tasks Completed"
-                                value={momentumToDisplay.tasksCompleted}
-                                icon={CheckCircle2}
-                                colorClass="text-emerald-500"
-                                source="Internal"
-                            />
-                            <MomentumStat
-                                label="Pending Reviews"
-                                value={momentumToDisplay.reviewsPending}
-                                icon={GitPullRequest}
-                                colorClass="text-amber-500"
-                                source="GitHub"
-                            />
-                        </div>
+
+                        {/* Pass momentum data to the unified component */}
+                        <UnifiedIntelligence
+                            momentumData={momentumToDisplay}
+                        />
                     </div>
 
                     {/* Recent Activity */}
@@ -703,6 +688,25 @@ export default function DashboardPage() {
                 onClose={() => setIsReportModalOpen(false)}
                 repository={selectedRepo !== 'All' ? selectedRepo : undefined}
             />
+
+            {/* Onboarding Overlay */}
+            {!hasCompletedOnboarding && (
+                <OnboardingOverlay
+                    onComplete={() => {
+                        setHasCompletedOnboarding(true);
+                        localStorage.setItem('onboarding_complete', 'true');
+                    }}
+                    onConnectGithub={async () => {
+                        // In real app: Trigger NextAuth GitHub flow or link account
+                        await new Promise(r => setTimeout(r, 2000));
+                        setSelectedRepo('All');
+                    }}
+                    onConnectCalendar={async () => {
+                        // In real app: Trigger Google Calendar flow
+                        await new Promise(r => setTimeout(r, 2000));
+                    }}
+                />
+            )}
         </div>
     );
 }

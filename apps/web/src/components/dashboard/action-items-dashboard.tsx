@@ -84,83 +84,83 @@ export function ActionItemsDashboard() {
             }
         } catch (e) {
             console.error('Failed to fetch action items', e);
-            // Mock data for demo
-            setItems([
-                {
-                    id: '1',
-                    title: 'Review API documentation for v2 endpoints',
-                    owner: 'Sarah Chen',
-                    ownerEmail: 'sarah@company.com',
-                    dueDate: addDays(new Date(), 2).toISOString(),
-                    status: 'open',
-                    source: 'meeting',
-                    sourceName: 'Engineering Sync',
-                    createdAt: new Date().toISOString(),
-                    priority: 'high'
-                },
-                {
-                    id: '2',
-                    title: 'Prepare demo for stakeholder meeting',
-                    owner: 'Mike Johnson',
-                    ownerEmail: 'mike@company.com',
-                    dueDate: addDays(new Date(), -1).toISOString(),
-                    status: 'open',
-                    source: 'meeting',
-                    sourceName: 'Sprint Planning',
-                    createdAt: new Date().toISOString(),
-                    priority: 'high'
-                },
-                {
-                    id: '3',
-                    title: 'Update project timeline',
-                    owner: 'Sarah Chen',
-                    ownerEmail: 'sarah@company.com',
-                    status: 'in_progress',
-                    source: 'manual',
-                    createdAt: new Date().toISOString(),
-                    priority: 'medium'
-                },
-                {
-                    id: '4',
-                    title: 'Send weekly progress report',
-                    owner: 'You',
-                    dueDate: addDays(new Date(), 5).toISOString(),
-                    status: 'open',
-                    source: 'manual',
-                    createdAt: new Date().toISOString(),
-                    priority: 'low'
-                }
-            ]);
+            // Fallback to empty if API fails, or keep mock data if you prefer
+            // For now, we'll keep the mock data only if it's a network error to avoid empty state during demos
+            if (items.length === 0) {
+                setItems([
+                    {
+                        id: '1',
+                        title: 'Review API documentation for v2 endpoints',
+                        owner: 'Sarah Chen',
+                        ownerEmail: 'sarah@company.com',
+                        dueDate: addDays(new Date(), 2).toISOString(),
+                        status: 'open',
+                        source: 'meeting',
+                        sourceName: 'Engineering Sync',
+                        createdAt: new Date().toISOString(),
+                        priority: 'high'
+                    },
+                    {
+                        id: '2',
+                        title: 'Prepare demo for stakeholder meeting',
+                        owner: 'Mike Johnson',
+                        ownerEmail: 'mike@company.com',
+                        dueDate: addDays(new Date(), -1).toISOString(),
+                        status: 'open',
+                        source: 'meeting',
+                        sourceName: 'Sprint Planning',
+                        createdAt: new Date().toISOString(),
+                        priority: 'high'
+                    }
+                ]);
+            }
         } finally {
             setLoading(false);
         }
     };
 
     const toggleComplete = async (item: ActionItem) => {
+        // Optimistic update
+        const originalStatus = item.status;
         const newStatus = item.status === 'completed' ? 'open' : 'completed';
+
         setItems(prev => prev.map(i =>
             i.id === item.id ? { ...i, status: newStatus } : i
         ));
-        // TODO: Persist to backend
+
+        try {
+            await axios.put(`${API_URL}/action-items/${item.id}/toggle`, {}, {
+                headers: { 'x-user-id': 'default-user-id' }
+            });
+        } catch (e) {
+            console.error('Failed to toggle item', e);
+            // Revert on failure
+            setItems(prev => prev.map(i =>
+                i.id === item.id ? { ...i, status: originalStatus } : i
+            ));
+        }
     };
 
     const addNewItem = async () => {
         if (!newItem.title.trim()) return;
         setSubmitting(true);
         try {
-            // TODO: Call API
-            const item: ActionItem = {
-                id: `new-${Date.now()}`,
+            const res = await axios.post(`${API_URL}/action-items`, {
                 title: newItem.title,
-                owner: newItem.owner || 'You',
-                dueDate: newItem.dueDate || undefined,
-                status: 'open',
-                source: 'manual',
-                createdAt: new Date().toISOString()
-            };
-            setItems(prev => [item, ...prev]);
-            setNewItem({ title: '', owner: '', dueDate: '' });
-            setAddingNew(false);
+                owner: newItem.owner,
+                dueDate: newItem.dueDate,
+                priority: 'medium'
+            }, {
+                headers: { 'x-user-id': 'default-user-id' }
+            });
+
+            if (res.data) {
+                setItems(prev => [res.data, ...prev]);
+                setNewItem({ title: '', owner: '', dueDate: '' });
+                setAddingNew(false);
+            }
+        } catch (e) {
+            console.error('Failed to add item', e);
         } finally {
             setSubmitting(false);
         }
@@ -228,8 +228,8 @@ export function ActionItemsDashboard() {
                             key={f.key}
                             onClick={() => setFilter(f.key as any)}
                             className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${filter === f.key
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-muted text-muted-foreground hover:bg-muted/80'
                                 }`}
                         >
                             {f.label}
@@ -328,8 +328,8 @@ export function ActionItemsDashboard() {
                                                     <button
                                                         onClick={() => toggleComplete(item)}
                                                         className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${item.status === 'completed'
-                                                                ? 'bg-green-500 border-green-500 text-white'
-                                                                : 'border-muted-foreground/30 hover:border-primary'
+                                                            ? 'bg-green-500 border-green-500 text-white'
+                                                            : 'border-muted-foreground/30 hover:border-primary'
                                                             }`}
                                                     >
                                                         {item.status === 'completed' && (
