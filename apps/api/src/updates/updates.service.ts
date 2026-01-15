@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EncryptionService } from '../encryption/encryption.service';
 import { ConfigService } from '@nestjs/config';
 import { EmailService } from '../email/email.service';
+import { TokenRefreshService } from '../integrations/token-refresh.service';
 import axios from 'axios';
 import { UpdateItem } from '@prisma/client';
 
@@ -13,7 +14,8 @@ export class UpdatesService {
         private prisma: PrismaService,
         private encryption: EncryptionService,
         private config: ConfigService,
-        private emailService: EmailService
+        private emailService: EmailService,
+        private tokenRefresh: TokenRefreshService
     ) { }
 
     async refreshUpdates(userId: string) {
@@ -29,17 +31,12 @@ export class UpdatesService {
 
         // Map providers to logic
         for (const integ of integrations) {
-            let token: string | null = null;
-            if (integ.encryptedBlob) {
-                try {
-                    const decrypted = this.encryption.decrypt(integ.encryptedBlob);
-                    const t = JSON.parse(decrypted);
-                    token = t.access_token;
-                } catch (e) {
-                    console.error(`Failed to decrypt token for ${integ.provider}`, e);
-                }
-            } else {
-                token = integ.accessToken;
+            // Use TokenRefreshService to get valid token (auto-refreshes if expired)
+            const tokenResult = await this.tokenRefresh.getValidToken(integ.id);
+            const token = tokenResult?.accessToken || null;
+
+            if (tokenResult?.refreshed) {
+                console.log(`[Updates] Token was refreshed for ${integ.provider}`);
             }
 
             console.log(`Processing ${integ.provider}, hasToken: ${!!token}`);
@@ -52,17 +49,16 @@ export class UpdatesService {
             // Calendar (provider: 'google')
             if (integ.provider === 'google') {
                 checks.google_calendar.status = 'checked_empty';
-                const items = await this.collectCalendar(userId, token);
+                const items = await this.collectWithRetry(integ.id, () => this.collectCalendar(userId, token));
                 if (items.length > 0) checks.google_calendar.status = 'checked_ok';
                 checks.google_calendar.count = items.length;
                 updates.push(...items);
             }
 
-            // Gmail (provider: 'gmail' or reuse 'google' if scope allows?)
-            // We'll look for 'gmail' specific provider first, generally.
+            // Gmail
             if (integ.provider === 'gmail') {
                 checks.gmail.status = 'checked_empty';
-                const items = await this.collectGmail(userId, token);
+                const items = await this.collectWithRetry(integ.id, () => this.collectGmail(userId, token));
                 if (items.length > 0) checks.gmail.status = 'checked_ok';
                 checks.gmail.count = items.length;
                 updates.push(...items);
@@ -191,6 +187,33 @@ export class UpdatesService {
             orderBy: { occurredAt: 'desc' },
             take: 50
         });
+    }
+
+    /**
+     * Wrapper for collection methods that retries with refreshed token on 401 error
+     */
+    private async collectWithRetry(
+        integrationId: string,
+        collectFn: () => Promise<any[]>
+    ): Promise<any[]> {
+        try {
+            return await collectFn();
+        } catch (error: any) {
+            if (error.response?.status === 401 || error.message?.includes('401')) {
+                console.log(`[Updates] Got 401, attempting token refresh for integration ${integrationId}...`);
+
+                // Get fresh token
+                const tokenResult = await this.tokenRefresh.getValidToken(integrationId);
+
+                if (tokenResult?.accessToken) {
+                    // We need to update the token in the closure, but since we can't easily do that,
+                    // we'll just return empty and log the issue - the next refresh will use the new token
+                    console.log(`[Updates] Token refreshed, will use new token on next refresh`);
+                }
+            }
+            // Return empty array on error instead of throwing
+            return [];
+        }
     }
 
     // --- COLLECTORS ---

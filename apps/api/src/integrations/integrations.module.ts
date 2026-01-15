@@ -14,11 +14,12 @@ import { GithubIntelligenceService } from './github-intelligence.service';
 import { GithubDocsService } from './github-docs.service';
 import { CodebaseExplainerService } from './codebase-explainer.service';
 import { CodebaseAnalyzerService } from './codebase-analyzer.service';
+import { TokenRefreshService } from './token-refresh.service';
 
 @Module({
     imports: [ConfigModule, forwardRef(() => MeetingsModule)],
     controllers: [IntegrationsController, SlackController, CodebaseController],
-    providers: [IntegrationsService, PrismaService, EncryptionService, CalendarClassificationService, GithubIntelligenceService, GithubDocsService, CodebaseExplainerService, CodebaseAnalyzerService],
-    exports: [IntegrationsService, CalendarClassificationService, GithubIntelligenceService, GithubDocsService, CodebaseExplainerService, CodebaseAnalyzerService],
+    providers: [IntegrationsService, PrismaService, EncryptionService, CalendarClassificationService, GithubIntelligenceService, GithubDocsService, CodebaseExplainerService, CodebaseAnalyzerService, TokenRefreshService],
+    exports: [IntegrationsService, CalendarClassificationService, GithubIntelligenceService, GithubDocsService, CodebaseExplainerService, CodebaseAnalyzerService, TokenRefreshService],
 })
 export class IntegrationsModule { }
