@@ -221,12 +221,14 @@ export default function DashboardPage() {
         const filteredPRs = prs.filter((p: any) => p.repo === selectedRepo);
         const filteredReleases = releases.filter((r: any) => r.repo === selectedRepo);
 
-        const commitsLast7d = filteredCommits.filter((c: any) => differenceInDays(new Date(), parseISO(c.date)) <= 7).length;
+        const commitsLast7dRaw = filteredCommits.filter((c: any) => differenceInDays(new Date(), parseISO(c.date)) <= 7);
+        // Active Dev Days = count of UNIQUE days with commits, not total commits
+        const activeDevDays = new Set(commitsLast7dRaw.map((c: any) => new Date(c.date).toDateString())).size;
         const mergedLast7d = filteredPRs.filter((p: any) => p.merged && differenceInDays(new Date(), parseISO(p.merged_at)) <= 7).length;
         const releasesLast7d = filteredReleases.filter((r: any) => differenceInDays(new Date(), parseISO(r.published_at)) <= 7).length;
 
         return viewModel.executive.metrics.map(m => {
-            if (m.id === 'repo-updates') return { ...m, value: commitsLast7d, trendLabel: 'Filtered', subtext: selectedRepo };
+            if (m.id === 'repo-updates') return { ...m, value: activeDevDays, trendLabel: 'Filtered', subtext: selectedRepo };
             if (m.id === 'eng-changes') return { ...m, value: mergedLast7d, trendLabel: 'Filtered' };
             if (m.id === 'shipped') return { ...m, value: releasesLast7d, trendLabel: 'Filtered' };
             return m;
