@@ -47,7 +47,7 @@ export default function ContactPage() {
     return (
         <div className="max-w-2xl mx-auto space-y-6">
             <div>
-                <h2 className="text-3xl font-bold tracking-tight">Contact Support</h2>
+                <h2 className="text-3xl font-bold tracking-tight">Give a Feedback</h2>
                 <p className="text-muted-foreground">Have a question or feedback? We'd love to hear from you.</p>
             </div>
 

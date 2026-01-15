@@ -30,7 +30,7 @@ const navigationItems: CommandItem[] = [
     { id: 'wrapped', label: 'Work Wrapped', icon: Sparkles, href: '/life-wrapped', keywords: ['summary', 'recap', 'year'] },
     { id: 'integrations', label: 'Integrations', icon: Zap, href: '/settings/integrations', keywords: ['connect', 'apps', 'google', 'slack'] },
     { id: 'settings', label: 'Settings', icon: Settings, href: '/settings', keywords: ['preferences', 'account'] },
-    { id: 'contact', label: 'Contact Support', icon: Mail, href: '/contact', keywords: ['help', 'support', 'feedback'] },
+    { id: 'contact', label: 'Give a Feedback', icon: Mail, href: '/contact', keywords: ['help', 'support', 'feedback'] },
 ];
 
 export function CommandPalette() {
