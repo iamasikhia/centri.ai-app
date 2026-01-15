@@ -393,30 +393,27 @@ export class DashboardService {
             }
         });
 
-        // Also try to get names from Slack integration if TeamMember is empty
-        if (memberMap.size === 0) {
-            try {
-                const slackIntegration = await this.prisma.integrations.findUnique({
-                    where: { userId_provider: { userId, provider: 'slack' } }
-                });
-                if (slackIntegration) {
-                    // Import encryption service - get from integrationsService
-                    const tokens = JSON.parse((this.integrationsService as any).encryption?.decrypt(slackIntegration.encryptedBlob) || '{}');
-                    if (tokens.access_token) {
-                        const slackProvider = this.integrationsService.getProvider('slack') as any;
-                        const syncResult = await slackProvider.syncData(userId, tokens);
-                        if (syncResult.teamMembers) {
-                            syncResult.teamMembers.forEach((m: any) => {
-                                if (m.externalId) {
-                                    memberMap.set(m.externalId, m.name);
-                                }
-                            });
-                        }
+        // Always try to get names from Slack integration to ensure we have latest data
+        try {
+            const slackIntegration = await this.prisma.integrations.findUnique({
+                where: { userId_provider: { userId, provider: 'slack' } }
+            });
+            if (slackIntegration) {
+                const tokens = JSON.parse((this.integrationsService as any).encryption?.decrypt(slackIntegration.encryptedBlob) || '{}');
+                if (tokens.access_token) {
+                    const slackProvider = this.integrationsService.getProvider('slack') as any;
+                    const syncResult = await slackProvider.syncData(userId, tokens);
+                    if (syncResult.teamMembers) {
+                        syncResult.teamMembers.forEach((m: any) => {
+                            if (m.externalId && m.name) {
+                                memberMap.set(m.externalId, m.name);
+                            }
+                        });
                     }
                 }
-            } catch (e) {
-                console.warn('Failed to fetch Slack members for name resolution');
             }
+        } catch (e) {
+            console.warn('Failed to fetch Slack members for name resolution:', e.message);
         }
 
         // Helper to resolve Slack user ID to name
