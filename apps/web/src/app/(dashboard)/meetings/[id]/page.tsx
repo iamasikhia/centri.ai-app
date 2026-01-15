@@ -13,6 +13,7 @@ import { ArrowLeft, Calendar, Users, FileText, Share2, MoreHorizontal, ExternalL
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function MeetingDetailPage({ params }: { params: { id: string } }) {
     const [meeting, setMeeting] = useState<Meeting | null | undefined>(undefined);
@@ -129,7 +130,57 @@ export default function MeetingDetailPage({ params }: { params: { id: string } }
     };
 
     if (meeting === undefined) {
-        return <div className="h-full flex items-center justify-center text-muted-foreground">Loading...</div>;
+        return (
+            <div className="h-full flex flex-col max-w-5xl mx-auto w-full">
+                {/* Header Skeleton */}
+                <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b px-6 py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <Skeleton className="h-9 w-9 rounded-lg" />
+                        <div className="h-6 w-px bg-border hidden sm:block" />
+                        <div className="space-y-2">
+                            <Skeleton className="h-5 w-64" />
+                            <Skeleton className="h-3 w-48" />
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Skeleton className="h-9 w-28 rounded-lg" />
+                        <Skeleton className="h-9 w-24 rounded-lg" />
+                    </div>
+                </div>
+                {/* Content Skeleton */}
+                <div className="flex-1 p-6 md:p-10 space-y-10">
+                    {/* Participants Bar */}
+                    <Skeleton className="h-16 w-full rounded-xl" />
+                    {/* Summary Section */}
+                    <div className="space-y-4">
+                        <Skeleton className="h-6 w-40" />
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-3/4" />
+                    </div>
+                    <Skeleton className="h-px w-full" />
+                    {/* Decisions & Actions Grid */}
+                    <div className="grid md:grid-cols-2 gap-8">
+                        <div className="space-y-3">
+                            <Skeleton className="h-5 w-24" />
+                            <Skeleton className="h-16 w-full rounded-lg" />
+                            <Skeleton className="h-16 w-full rounded-lg" />
+                        </div>
+                        <div className="space-y-3">
+                            <Skeleton className="h-5 w-28" />
+                            <Skeleton className="h-16 w-full rounded-lg" />
+                            <Skeleton className="h-16 w-full rounded-lg" />
+                        </div>
+                    </div>
+                    <Skeleton className="h-px w-full" />
+                    {/* Transcript Section */}
+                    <div className="space-y-4">
+                        <Skeleton className="h-6 w-32" />
+                        <Skeleton className="h-32 w-full rounded-lg" />
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     if (meeting === null) {
