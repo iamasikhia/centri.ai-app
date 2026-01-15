@@ -275,3 +275,15 @@ model SystemSetting {
   value Json
   updatedAt DateTime @updatedAt
 }
+
+model OnboardingResponse {
+  id                   String   @id @default(uuid())
+  userId               String
+  userEmail            String?
+  selectedGoals        Json     // Array of goal IDs
+  selectedIntegrations Json     // Array of integration IDs
+  completedAt          DateTime @default(now())
+  
+  @@index([userId])
+  @@index([completedAt])
+}

@@ -15,6 +15,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { StakeholderModule } from './stakeholders/stakeholder.module';
 import { ActionItemsModule } from './action-items/action-items.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 
 @Module({
     imports: [
@@ -32,6 +33,7 @@ import { ActionItemsModule } from './action-items/action-items.module';
         AnalyticsModule,
         StakeholderModule,
         ActionItemsModule,
+        OnboardingModule,
     ],
     providers: [EncryptionService],
 })

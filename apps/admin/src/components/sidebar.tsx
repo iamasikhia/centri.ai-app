@@ -14,7 +14,8 @@ import {
     ScrollText,
     Moon,
     Sun,
-    MessageCircle
+    MessageCircle,
+    ClipboardCheck
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from './ui/button';
@@ -23,6 +24,7 @@ const navigation = [
     { name: 'Overview', href: '/', icon: LayoutDashboard },
     { name: 'Users', href: '/users', icon: Users },
     { name: 'Organizations', href: '/organizations', icon: Building2 },
+    { name: 'Onboarding Insights', href: '/onboarding-insights', icon: ClipboardCheck },
     { name: 'Integrations', href: '/integrations', icon: Activity },
     { name: 'Ask AI', href: '/chat', icon: MessageCircle },
 ];

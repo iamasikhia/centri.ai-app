@@ -145,10 +145,29 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
         );
     };
 
-    const handleFinish = () => {
+    const handleFinish = async () => {
         // Save selections to localStorage for personalization
         localStorage.setItem('user_goals', JSON.stringify(selectedGoals));
         localStorage.setItem('selected_integrations', JSON.stringify(selectedIntegrations));
+
+        // Send onboarding response to backend API
+        try {
+            const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+            await fetch(`${API_URL}/onboarding/complete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-id': 'default-user-id'
+                },
+                body: JSON.stringify({
+                    selectedGoals,
+                    selectedIntegrations
+                })
+            });
+        } catch (e) {
+            console.error('Failed to save onboarding response:', e);
+        }
+
         // Mark onboarding as complete BEFORE redirect
         localStorage.setItem('onboarding_complete', 'true');
         onComplete();
