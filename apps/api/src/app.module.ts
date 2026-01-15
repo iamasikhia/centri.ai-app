@@ -16,6 +16,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { StakeholderModule } from './stakeholders/stakeholder.module';
 import { ActionItemsModule } from './action-items/action-items.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { ActivityModule } from './activity/activity.module';
 
 @Module({
     imports: [
@@ -34,6 +35,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
         StakeholderModule,
         ActionItemsModule,
         OnboardingModule,
+        ActivityModule,
     ],
     providers: [EncryptionService],
 })

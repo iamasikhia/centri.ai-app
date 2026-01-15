@@ -4,6 +4,7 @@ import { ChatProvider } from '@/components/chat/chat-provider'
 import { NotificationsSheet } from '@/components/dashboard/notifications-sheet'
 import { Toaster } from '@/components/ui/toaster'
 import { CommandPalette } from '@/components/command-palette'
+import { ActivityTracker } from '@/hooks/use-activity-tracker'
 
 export default function DashboardLayout({
     children,
@@ -12,6 +13,7 @@ export default function DashboardLayout({
 }) {
     return (
         <ChatProvider>
+            <ActivityTracker />
             <div className="flex h-screen w-full">
                 <Sidebar />
                 <main className="flex-1 overflow-y-auto bg-background p-8">
@@ -25,3 +27,4 @@ export default function DashboardLayout({
         </ChatProvider>
     )
 }
+

@@ -7,9 +7,9 @@ export class AnalyticsService {
 
     async getGlobalKPIs() {
         const totalUsers = await this.prisma.user.count();
+        const now = new Date();
 
         // Calculate Growth Rate (This Month vs Last Month)
-        const now = new Date();
         const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
@@ -31,20 +31,45 @@ export class AnalyticsService {
             ? ((newUsersThisMonth - newUsersLastMonth) / newUsersLastMonth) * 100
             : (newUsersThisMonth > 0 ? 100 : 0);
 
-        // Active Users Proxy: Users updated in last 30 days
-        const thirtyDaysAgo = new Date(now.setDate(now.getDate() - 30));
-        const activeUsersCount = await this.prisma.user.count({
-            where: { updatedAt: { gte: thirtyDaysAgo } }
+        // Real Active Users from UserActivity table
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        // Get DAU (unique users today)
+        const dauResult = await this.prisma.userActivity.groupBy({
+            by: ['userId'],
+            where: { activityAt: { gte: startOfToday } }
         });
+        const dau = dauResult.length;
+
+        // Get WAU (unique users last 7 days)
+        const wauResult = await this.prisma.userActivity.groupBy({
+            by: ['userId'],
+            where: { activityAt: { gte: sevenDaysAgo } }
+        });
+        const wau = wauResult.length;
+
+        // Get MAU (unique users last 30 days)
+        const mauResult = await this.prisma.userActivity.groupBy({
+            by: ['userId'],
+            where: { activityAt: { gte: thirtyDaysAgo } }
+        });
+        const mau = mauResult.length;
 
         return {
             totalUsers,
-            dau: Math.floor(activeUsersCount * 0.4), // Estimate DAU as 40% of MAU based on industry standard
-            mau: activeUsersCount,
-            wau: Math.floor(activeUsersCount * 0.6),
+            dau,
+            mau,
+            wau,
             newSignups: newUsersThisMonth,
             activeOrgs: 1,
-            activationRate: totalUsers > 0 ? (activeUsersCount / totalUsers) * 100 : 0,
+            activationRate: totalUsers > 0 ? parseFloat(((mau / totalUsers) * 100).toFixed(1)) : 0,
             churnRate: 0, // No subscription data to calculate churn
             growthRates: {
                 users: parseFloat(growthRate.toFixed(1)),

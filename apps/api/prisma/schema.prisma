@@ -287,3 +287,15 @@ model OnboardingResponse {
   @@index([userId])
   @@index([completedAt])
 }
+
+// Track user activity for DAU/WAU/MAU calculations
+model UserActivity {
+  id          String   @id @default(uuid())
+  userId      String
+  activityAt  DateTime @default(now())
+  activityType String  // 'page_view', 'api_call', 'login', 'action'
+  metadata    Json?    // Optional: page, action details
+  
+  @@index([userId, activityAt])
+  @@index([activityAt])
+}
