@@ -325,9 +325,43 @@ export default function DashboardPage() {
     }, [status, timeRange]);
     */
 
-    const fetchData = async () => {
+    const fetchData = async (forceRefresh = false) => {
         const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+        const cacheKey = `dashboard_cache_${timeRange}`;
+        const cacheTimeKey = `dashboard_cache_time_${timeRange}`;
+        const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
         try {
+            // Try to load from cache first (for instant display)
+            if (!forceRefresh && typeof window !== 'undefined') {
+                const cached = sessionStorage.getItem(cacheKey);
+                const cacheTime = sessionStorage.getItem(cacheTimeKey);
+
+                if (cached && cacheTime) {
+                    const age = Date.now() - parseInt(cacheTime);
+                    if (age < CACHE_DURATION) {
+                        // Use cached data immediately
+                        const cachedVm = JSON.parse(cached);
+                        setViewModel(cachedVm);
+                        setLoading(false);
+
+                        // Fetch fresh data in background (stale-while-revalidate)
+                        fetch(`${API_URL}/dashboard?range=${timeRange}`, { headers: { 'x-user-id': 'default-user-id' } })
+                            .then(res => res.ok ? res.json() : null)
+                            .then(rawData => {
+                                if (rawData) {
+                                    const freshVm = buildDashboardViewModel(rawData);
+                                    setViewModel(freshVm);
+                                    sessionStorage.setItem(cacheKey, JSON.stringify(freshVm));
+                                    sessionStorage.setItem(cacheTimeKey, Date.now().toString());
+                                }
+                            })
+                            .catch(() => { }); // Silent fail for background refresh
+                        return;
+                    }
+                }
+            }
+
             setLoading(true);
             const res = await fetch(`${API_URL}/dashboard?range=${timeRange}`, { headers: { 'x-user-id': 'default-user-id' } });
 
@@ -337,6 +371,12 @@ export default function DashboardPage() {
                 if (!res.ok) throw new Error("Fetch failed");
                 const rawData = await res.json();
                 vm = buildDashboardViewModel(rawData);
+
+                // Cache the result
+                if (typeof window !== 'undefined') {
+                    sessionStorage.setItem(cacheKey, JSON.stringify(vm));
+                    sessionStorage.setItem(cacheTimeKey, Date.now().toString());
+                }
             } catch (e) {
                 // Mock fallback
                 vm = buildDashboardViewModel({ tasks: [], meetings: [], people: [], lastSyncedAt: new Date().toISOString() });
@@ -362,7 +402,7 @@ export default function DashboardPage() {
             console.error("Sync failed", e);
         } finally {
             setSyncing(false);
-            fetchData();
+            fetchData(true); // Force refresh, skip cache
         }
     };
 

@@ -25,7 +25,8 @@ export const authOptions: NextAuthOptions = {
                 // Sync to backend (Fire and forget, or await)
                 try {
                     // Assuming hardcoded user ID for MVP same as backend
-                    await fetch('http://localhost:3001/integrations/google/save-tokens', {
+                    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+                    await fetch(`${API_URL}/integrations/google/save-tokens`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',

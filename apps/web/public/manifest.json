@@ -1,0 +1,30 @@
+{
+    "name": "Centri.ai - Meeting Intelligence AI",
+    "short_name": "Centri.ai",
+    "description": "Your Meeting Intelligence AI. Stay on top of team updates, meeting decisions, and project progress.",
+    "start_url": "/dashboard",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#8b5cf6",
+    "orientation": "portrait-primary",
+    "icons": [
+        {
+            "src": "/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ],
+    "categories": [
+        "productivity",
+        "business"
+    ],
+    "screenshots": [],
+    "prefer_related_applications": false
+}

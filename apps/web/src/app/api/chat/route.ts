@@ -144,9 +144,10 @@ export async function POST(req: NextRequest) {
         }
 
         // 2. Dashboard
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
         if (intent === 'task' || intent === 'blocker' || intent === 'general') {
             try {
-                const res = await fetch('http://localhost:3001/dashboard', { headers: { 'x-user-id': 'default-user-id' } });
+                const res = await fetch(`${API_URL}/dashboard`, { headers: { 'x-user-id': 'default-user-id' } });
                 if (res.ok) dashboardData = await res.json();
             } catch (e) { }
         }
@@ -155,7 +156,7 @@ export async function POST(req: NextRequest) {
         if (intent === 'slack' || intent === 'team' || intent === 'general') {
             try {
                 // Fetch basic data
-                const res = await fetch('http://localhost:3001/slack/channels', { headers: { 'x-user-id': 'default-user-id' } });
+                const res = await fetch(`${API_URL}/slack/channels`, { headers: { 'x-user-id': 'default-user-id' } });
                 if (res.ok) {
                     const basic = await res.json();
                     slackData.channels = basic.channels;
@@ -164,7 +165,7 @@ export async function POST(req: NextRequest) {
 
                 // Fetch recent activity for summaries
                 if (intent === 'slack' || intent === 'general') {
-                    const actRes = await fetch('http://localhost:3001/slack/activity', { headers: { 'x-user-id': 'default-user-id' } });
+                    const actRes = await fetch(`${API_URL}/slack/activity`, { headers: { 'x-user-id': 'default-user-id' } });
                     if (actRes.ok) {
                         const actData = await actRes.json();
                         slackData.activity = actData.activity || [];

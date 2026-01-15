@@ -52,7 +52,7 @@ const GOALS: Goal[] = [
     },
     {
         id: 'stakeholder-updates',
-        statement: 'I want to provide stakeholder updates without chasing people',
+        statement: 'I want a reminder to send out stakeholder updates',
         icon: '📊'
     },
     {
@@ -123,7 +123,7 @@ const INTEGRATIONS: Integration[] = [
         id: 'fathom',
         name: 'Fathom',
         description: 'AI Meeting Recorder.',
-        logo: 'https://fathom.video/images/brand/icon.svg'
+        logo: 'https://assets-global.website-files.com/60e5f2de011b865a07ccaa5f/60e5f2de011b8638e7ccab19_fathom-logo-purple.svg'
     },
 ];
 

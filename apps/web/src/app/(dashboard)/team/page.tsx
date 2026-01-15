@@ -43,13 +43,14 @@ export default function TeamPage() {
     const fetchData = async () => {
         setLoading(true);
         setError(null);
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
         try {
             const headers = { 'x-user-id': 'default-user-id' };
 
             // Parallel Fetch
             const [slackRes, dashRes] = await Promise.all([
-                fetch('http://localhost:3001/slack/channels', { headers }),
-                fetch('http://localhost:3001/dashboard', { headers })
+                fetch(`${API_URL}/slack/channels`, { headers }),
+                fetch(`${API_URL}/dashboard`, { headers })
             ]);
 
             // Handle Slack
