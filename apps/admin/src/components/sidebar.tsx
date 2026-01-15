@@ -15,7 +15,8 @@ import {
     Moon,
     Sun,
     MessageCircle,
-    ClipboardCheck
+    ClipboardCheck,
+    BarChart3
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from './ui/button';
@@ -23,6 +24,7 @@ import { Button } from './ui/button';
 const navigation = [
     { name: 'Overview', href: '/', icon: LayoutDashboard },
     { name: 'Users', href: '/users', icon: Users },
+    { name: 'User Insights', href: '/user-insights', icon: BarChart3 },
     { name: 'Organizations', href: '/organizations', icon: Building2 },
     { name: 'Onboarding Insights', href: '/onboarding-insights', icon: ClipboardCheck },
     { name: 'Integrations', href: '/integrations', icon: Activity },
