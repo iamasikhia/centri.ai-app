@@ -204,7 +204,7 @@ export default function IntegrationsPage() {
 
     // Refresh status when user returns to the page (after OAuth)
     const handleFocus = () => {
-      if (status !== 'loading') fetchData();
+      if (status !== 'loading') fetchData(true);
     };
 
     window.addEventListener('focus', handleFocus);
@@ -244,7 +244,7 @@ export default function IntegrationsPage() {
         method: 'POST',
         headers: { 'x-user-id': userId }
       });
-      fetchData();
+      fetchData(true);
     } catch (e) {
       console.error("Disconnect failed", e);
     }
