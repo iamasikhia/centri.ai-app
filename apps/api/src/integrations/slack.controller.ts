@@ -411,13 +411,27 @@ export class SlackController {
                     orderBy: { createdAt: 'desc' }
                 });
 
+                // 5. Build member name map for resolution (reuse slackProvider)
+                const syncResult = await slackProvider.syncData(uid, tokens);
+                const memberMap = new Map<string, string>();
+                if (syncResult.teamMembers) {
+                    syncResult.teamMembers.forEach((m: any) => {
+                        if (m.externalId && m.name) {
+                            memberMap.set(m.externalId, m.name);
+                        }
+                    });
+                }
+
+                const resolveName = (slackId: string) => memberMap.get(slackId) || slackId;
+
                 return {
                     questionId: question.id,
                     questionTitle: question.title,
                     lastSentAt: question.lastSentAt,
                     responses: updatedResponses.map(r => ({
                         id: r.id,
-                        slackUser: r.slackUser,
+                        slackUser: resolveName(r.slackUser || ''),
+                        slackUserId: r.slackUser,
                         text: r.text,
                         createdAt: r.createdAt.toISOString()
                     }))
@@ -425,14 +439,40 @@ export class SlackController {
             }
         }
 
-        // Fallback: Return stored responses without fresh fetch
+        // Fallback: Return stored responses, try to resolve names if possible
+        const integration = await this.prisma.integrations.findUnique({
+            where: { userId_provider: { userId: uid, provider: 'slack' } }
+        });
+
+        let resolveName = (slackId: string) => slackId; // Default: no resolution
+
+        if (integration) {
+            try {
+                const tokens = JSON.parse(this.encryption.decrypt(integration.encryptedBlob));
+                const slackProvider = this.integrationsService.getProvider('slack') as any;
+                const syncResult = await slackProvider.syncData(uid, tokens);
+                const memberMap = new Map<string, string>();
+                if (syncResult.teamMembers) {
+                    syncResult.teamMembers.forEach((m: any) => {
+                        if (m.externalId && m.name) {
+                            memberMap.set(m.externalId, m.name);
+                        }
+                    });
+                }
+                resolveName = (slackId: string) => memberMap.get(slackId) || slackId;
+            } catch (e) {
+                console.warn('Failed to resolve names in fallback:', e.message);
+            }
+        }
+
         return {
             questionId: question.id,
             questionTitle: question.title,
             lastSentAt: question.lastSentAt,
             responses: question.responses.map(r => ({
                 id: r.id,
-                slackUser: r.slackUser,
+                slackUser: resolveName(r.slackUser || ''),
+                slackUserId: r.slackUser,
                 text: r.text,
                 createdAt: r.createdAt.toISOString()
             }))
