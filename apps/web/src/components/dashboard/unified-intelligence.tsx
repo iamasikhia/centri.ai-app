@@ -43,10 +43,44 @@ export default function UnifiedIntelligence({ momentumData }: Props) {
     const [error, setError] = useState<string | null>(null);
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    const CACHE_KEY = 'work_intelligence_cache';
+    const CACHE_TIME_KEY = 'work_intelligence_cache_time';
+    const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-    const fetchIntelligence = async () => {
-        setLoading(true);
+    const fetchIntelligence = async (forceRefresh = false) => {
         setError(null);
+
+        // Check cache first for instant display
+        if (!forceRefresh && typeof window !== 'undefined') {
+            const cached = sessionStorage.getItem(CACHE_KEY);
+            const cacheTime = sessionStorage.getItem(CACHE_TIME_KEY);
+
+            if (cached && cacheTime) {
+                const age = Date.now() - parseInt(cacheTime);
+                if (age < CACHE_DURATION) {
+                    // Use cached data immediately
+                    setData(JSON.parse(cached));
+                    setLoading(false);
+
+                    // Fetch fresh data in background (stale-while-revalidate)
+                    fetch(`${API_URL}/dashboard/intelligence`, {
+                        headers: { 'x-user-id': 'default-user-id' }
+                    })
+                        .then(res => res.ok ? res.json() : null)
+                        .then(json => {
+                            if (json) {
+                                setData(json);
+                                sessionStorage.setItem(CACHE_KEY, JSON.stringify(json));
+                                sessionStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+                            }
+                        })
+                        .catch(() => { }); // Silent fail for background refresh
+                    return;
+                }
+            }
+        }
+
+        setLoading(true);
         try {
             const res = await fetch(`${API_URL}/dashboard/intelligence`, {
                 headers: { 'x-user-id': 'default-user-id' }
@@ -54,6 +88,12 @@ export default function UnifiedIntelligence({ momentumData }: Props) {
             if (res.ok) {
                 const json = await res.json();
                 setData(json);
+
+                // Cache the result
+                if (typeof window !== 'undefined') {
+                    sessionStorage.setItem(CACHE_KEY, JSON.stringify(json));
+                    sessionStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+                }
             } else {
                 setError('Failed to load intelligence data');
             }
@@ -71,13 +111,17 @@ export default function UnifiedIntelligence({ momentumData }: Props) {
 
     if (loading) {
         return (
-            <Card className="overflow-hidden">
+            <Card className="overflow-hidden border-primary/20">
                 <CardContent className="p-0">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border/50">
                         {[...Array(8)].map((_, i) => (
-                            <div key={i} className="bg-card p-4">
-                                <Skeleton className="h-4 w-20 mb-2" />
-                                <Skeleton className="h-8 w-12" />
+                            <div key={i} className="bg-card p-4 space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <Skeleton className="h-4 w-4 rounded" />
+                                    <Skeleton className="h-3 w-16" />
+                                </div>
+                                <Skeleton className="h-8 w-14" />
+                                <Skeleton className="h-3 w-20" />
                             </div>
                         ))}
                     </div>
