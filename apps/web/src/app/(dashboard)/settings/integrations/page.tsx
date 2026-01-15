@@ -199,7 +199,7 @@ export default function IntegrationsPage() {
 
   useEffect(() => {
     if (status !== 'loading') {
-      fetchData();
+      fetchData(true);
     }
 
     // Refresh status when user returns to the page (after OAuth)
