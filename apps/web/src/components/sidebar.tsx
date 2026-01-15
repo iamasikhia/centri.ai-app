@@ -58,6 +58,7 @@ export function Sidebar() {
         { href: '/todos', label: 'Tasks', icon: CheckSquare },
         { href: '/questions', label: 'CheckIns', icon: CalendarCheck },
         { href: '/stakeholders', label: 'Stakeholders', icon: Briefcase },
+        { href: '/contact', label: 'Give Feedback', icon: Mail },
     ];
 
     const footerLinks = [
@@ -65,7 +66,6 @@ export function Sidebar() {
         { href: '/life-wrapped', label: 'Work Wrapped', icon: Sparkles },
         { href: '/settings/integrations', label: 'Integrations', icon: Zap },
         { href: '/settings', label: 'Settings', icon: Settings },
-        { href: '/contact', label: 'Contact', icon: Mail },
     ];
 
     const renderLink = (link: typeof mainLinks[0]) => {
