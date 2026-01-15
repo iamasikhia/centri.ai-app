@@ -333,11 +333,11 @@ export class DashboardService {
      * The "magic" cross-source synthesis that brings everything together.
      * This is the killer feature that justifies the platform.
      */
-    async getUnifiedIntelligence(userId: string) {
-        // Check cache first
+    async getUnifiedIntelligence(userId: string, forceRefresh = false) {
+        // Check cache first (unless force refresh)
         const cacheKey = `intelligence:${userId}`;
         const cached = this.dashboardCache.get(cacheKey);
-        if (cached && Date.now() - cached.timestamp < this.CACHE_TTL_MS) {
+        if (!forceRefresh && cached && Date.now() - cached.timestamp < this.CACHE_TTL_MS) {
             console.log(`[Intelligence] Returning cached data for ${userId}`);
             return cached.data;
         }
@@ -416,8 +416,20 @@ export class DashboardService {
             console.warn('Failed to fetch Slack members for name resolution:', e.message);
         }
 
+        console.log(`[Intelligence] MemberMap size: ${memberMap.size}`);
+        if (memberMap.size > 0) {
+            console.log(`[Intelligence] Member IDs in map:`, Array.from(memberMap.keys()).slice(0, 5));
+        }
+
         // Helper to resolve Slack user ID to name
-        const resolveName = (slackId: string) => memberMap.get(slackId) || slackId;
+        const resolveName = (slackId: string | null) => {
+            if (!slackId) return 'Unknown';
+            const name = memberMap.get(slackId);
+            if (!name) {
+                console.log(`[Intelligence] Could not resolve name for slackId: ${slackId}`);
+            }
+            return name || slackId;
+        };
 
         // 4. Extract team pulse from check-in responses
         const teamPulse: any[] = [];
