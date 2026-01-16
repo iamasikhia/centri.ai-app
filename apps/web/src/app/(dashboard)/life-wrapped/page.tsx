@@ -1,15 +1,58 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { lifeWrappedData, WrappedData } from '@/data/life-wrapped-data';
+import axios from 'axios';
 import { cn } from '@/lib/utils';
-import { Clock, Users, CheckCircle2, MessageSquare, Box, Zap, Sparkles, Calendar, ChevronDown } from 'lucide-react';
+import { Clock, Users, CheckCircle2, MessageSquare, Box, Zap, Sparkles, Calendar, ChevronDown, Loader2 } from 'lucide-react';
 
 type Period = 'week' | 'month' | 'year';
 
+interface WrappedData {
+    period: string;
+    timeOverview: {
+        meetingHours: number;
+        meetingCount: number;
+        avgMeetingLengthMinutes: number;
+        focusPercentage: number;
+    };
+    meetingsBreakdown: {
+        oneOnOne: number;
+        team: number;
+        stakeholder: number;
+        longestMeeting: string;
+        insight: string;
+    };
+    work: {
+        completed: number;
+        created: number;
+        actionItems: number;
+        copy: string;
+    };
+    collaboration: {
+        activeChannels: number;
+        stakeholders: number;
+        slackSent: number;
+        copy: string;
+    };
+    product: {
+        decisions: number;
+        features: number;
+        releases: number;
+        docs: number;
+        copy: string;
+    };
+    focus: {
+        busiestDay: string;
+        leastProductiveDay: string;
+        peakMeetingTime: string;
+    };
+    aiReflection: string;
+}
+
 export default function LifeWrappedPage() {
     const [period, setPeriod] = useState<Period>('week');
-    const data = lifeWrappedData[period];
+    const [data, setData] = useState<WrappedData | null>(null);
+    const [loading, setLoading] = useState(true);
     const containerRef = useRef<HTMLDivElement>(null);
 
     // Reset scroll when period changes
@@ -18,6 +61,39 @@ export default function LifeWrappedPage() {
             containerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
         }
     }, [period]);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+                // Use default user ID or real one if available
+                const res = await axios.get(`${API_URL}/reports/wrapped?period=${period}`, {
+                    headers: { 'x-user-id': 'default-user-id' }
+                });
+                setData(res.data);
+            } catch (error) {
+                console.error('Failed to fetch wrapped data', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, [period]);
+
+    if (loading) {
+        return (
+            <div className="h-[calc(100vh-4rem)] w-full bg-black text-white flex items-center justify-center">
+                <div className="text-center space-y-4">
+                    <Loader2 className="w-12 h-12 animate-spin mx-auto text-violet-500" />
+                    <p className="text-xl font-light text-white/60 animate-pulse">Generating your report...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!data) return null;
 
     return (
         <div className="relative h-[calc(100vh-4rem)] w-full overflow-hidden bg-black text-white rounded-xl shadow-2xl">
