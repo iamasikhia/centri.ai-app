@@ -239,6 +239,42 @@ export class DashboardService {
             });
         }
 
+        // 6. Action Items Count (from meetings)
+        let totalActionItems = 0;
+        let openActionItems = 0;
+        const recentActionItems: any[] = [];
+
+        for (const meeting of rangeMeetings) {
+            if (meeting.actionItemsJson) {
+                try {
+                    const items = JSON.parse(meeting.actionItemsJson);
+                    if (Array.isArray(items)) {
+                        totalActionItems += items.length;
+                        items.slice(0, 3).forEach((item: any, idx: number) => {
+                            const title = typeof item === 'string' ? item : item.item || item.title || item.action;
+                            const completed = typeof item === 'object' ? item.completed : false;
+                            if (!completed) openActionItems++;
+
+                            if (recentActionItems.length < 5) {
+                                recentActionItems.push({
+                                    id: `ai-${meeting.id}-${idx}`,
+                                    title: title?.substring(0, 80),
+                                    source: meeting.title,
+                                    completed,
+                                    date: meeting.startTime.toISOString()
+                                });
+                            }
+                        });
+                    }
+                } catch (e) { }
+            }
+        }
+
+        // 7. Stakeholder Count
+        const stakeholderCount = await this.prisma.stakeholder.count({
+            where: { userId }
+        });
+
         const result = {
             lastSyncedAt: lastSync?.finishedAt?.toISOString() || null,
             people,
@@ -248,6 +284,10 @@ export class DashboardService {
             githubIntelligence,
             totalDecisions,
             totalBlockers,
+            totalActionItems,
+            openActionItems,
+            recentActionItems,
+            stakeholderCount,
             realityCheck, // New AI Insight Field
             focusTasks: [],
             blockers: [],

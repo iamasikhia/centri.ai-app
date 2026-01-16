@@ -240,7 +240,20 @@ export function groupTasksByUrgency(tasks: Task[], now = new Date()) {
 
 // Main Build Function
 export function buildDashboardViewModel(
-    data: { tasks: Task[], meetings: Meeting[], people: Person[], updates?: any[], lastSyncedAt?: string, githubIntelligence?: any, totalDecisions?: number, totalBlockers?: number },
+    data: {
+        tasks: Task[],
+        meetings: Meeting[],
+        people: Person[],
+        updates?: any[],
+        lastSyncedAt?: string,
+        githubIntelligence?: any,
+        totalDecisions?: number,
+        totalBlockers?: number,
+        totalActionItems?: number,
+        openActionItems?: number,
+        recentActionItems?: any[],
+        stakeholderCount?: number
+    },
     now = new Date()
 ): DashboardViewModel {
 
@@ -378,9 +391,9 @@ export function buildDashboardViewModel(
     } else {
         // Fallback Mocks (if no GitHub)
         baseMetrics = [
-            { id: 'repo-updates', title: 'Active Dev Days', value: 0, description: 'No data connected', trendLabel: '-', trendDirection: 'flat' },
-            { id: 'eng-changes', title: 'Features Completed', value: 0, description: 'No data connected', trendLabel: '-', trendDirection: 'flat' },
-            { id: 'shipped', title: 'User-Facing Changes', value: 0, description: 'No data connected', trendLabel: '-', trendDirection: 'flat' }
+            { id: 'repo-updates', title: 'Team Activity', value: 0, description: 'Connect GitHub to track', trendLabel: '-', trendDirection: 'flat' },
+            { id: 'eng-changes', title: 'Features Completed', value: 0, description: 'Connect GitHub to track', trendLabel: '-', trendDirection: 'flat' },
+            { id: 'shipped', title: 'Releases to Users', value: 0, description: 'Connect GitHub to track', trendLabel: '-', trendDirection: 'flat' }
         ];
     }
 
@@ -390,20 +403,33 @@ export function buildDashboardViewModel(
         id: 'blocked-items',
         title: 'Blockers',
         value: (data.totalBlockers !== undefined) ? data.totalBlockers : blockedTasks.length,
-        description: 'Discussions from Meetings',
+        description: 'Issues needing resolution',
         trendLabel: (data.totalBlockers || blockedTasks.length) > 0 ? 'Needs Attention' : 'Clear',
         trendDirection: (data.totalBlockers || blockedTasks.length) > 0 ? 'down' : 'up'
     });
 
-    // Add Decisions context (Mocked for now as we don't have this source yet)
+    // Add Decisions context
     baseMetrics.push({
         id: 'decisions',
-        title: 'Product Decisions',
+        title: 'Decisions Made',
         value: data.totalDecisions || 0,
-        description: 'Discussions from Meetings',
-        trendLabel: 'Saved',
+        description: 'From meeting discussions',
+        trendLabel: 'Captured',
         trendDirection: 'up'
     });
+
+    // Add Action Items - Critical for PMs
+    if (data.openActionItems !== undefined) {
+        baseMetrics.push({
+            id: 'action-items',
+            title: 'Open Action Items',
+            value: data.openActionItems,
+            description: 'Follow-ups from meetings',
+            trendLabel: data.openActionItems > 5 ? 'Review needed' : 'On track',
+            trendDirection: data.openActionItems > 5 ? 'down' : 'up',
+            subtext: `${data.totalActionItems || 0} total this week`
+        });
+    }
 
     const executive: ExecutiveMetrics = { metrics: baseMetrics };
 

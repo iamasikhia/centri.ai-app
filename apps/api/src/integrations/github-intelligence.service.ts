@@ -95,28 +95,28 @@ export class GithubIntelligenceService {
         return [
             {
                 id: 'repo-updates',
-                title: 'Active Dev Days',
+                title: 'Team Activity',
                 value: uniqueDaysWithCommits,
                 trendDirection: uniqueDaysWithCommits >= uniqueDaysPrev ? 'up' : 'down',
                 trendLabel: uniqueDaysPrev ? `${Math.round(((uniqueDaysWithCommits - uniqueDaysPrev) / uniqueDaysPrev) * 100)}%` : 'New',
-                description: 'Days with code commits to main branches.',
-                subtext: `${commitsLast7d.length} total commits`
+                description: 'Days with active development work',
+                subtext: `${commitsLast7d.length} updates this week`
             },
             {
                 id: 'eng-changes',
-                title: 'Engineering Changes',
+                title: 'Features Completed',
                 value: mergedLast7d,
-                trendDirection: 'flat', // Simplified for MVP
-                trendLabel: 'Stable',
-                description: 'Merged Pull Requests.'
+                trendDirection: mergedLast7d > 0 ? 'up' : 'flat',
+                trendLabel: mergedLast7d > 0 ? 'Shipping' : 'In Progress',
+                description: 'Work items ready for users'
             },
             {
                 id: 'shipped',
-                title: 'Product Updates Shipped',
+                title: 'Releases to Users',
                 value: releasesLast7d,
                 trendDirection: releasesLast7d > 0 ? 'up' : 'flat',
-                trendLabel: releasesLast7d > 0 ? 'Active' : 'None',
-                description: 'New versions released.'
+                trendLabel: releasesLast7d > 0 ? 'Live' : 'Pending',
+                description: 'Product updates shipped'
             }
         ];
     }
