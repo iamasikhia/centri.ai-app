@@ -3,6 +3,7 @@
 
 import * as React from "react"
 import { useSession, signOut } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import { useTheme } from "@/components/theme-provider"
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -11,12 +12,15 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { NativeSelect } from "@/components/ui/native-select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Moon, Sun, Monitor, Upload, LogOut, Trash2 } from "lucide-react"
+import { Moon, Sun, Monitor, Upload, LogOut, Trash2, CreditCard, Crown, ArrowRight, Sparkles } from "lucide-react"
+import { PricingModal } from "@/components/pricing-modal"
 
 export default function SettingsPage() {
     const { data: session } = useSession()
     const { theme, setTheme } = useTheme()
+    const router = useRouter()
     const [mounted, setMounted] = React.useState(false)
+    const [showPricingModal, setShowPricingModal] = React.useState(false)
 
     // Form states
     const [name, setName] = React.useState("")
@@ -36,7 +40,39 @@ export default function SettingsPage() {
                 <p className="text-muted-foreground">Manage your profile, appearance, and application preferences.</p>
             </div>
 
-            {/* Appearance Section (New) */}
+            {/* Billing & Subscription */}
+            <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Crown className="w-5 h-5 text-primary" />
+                        Billing & Subscription
+                    </CardTitle>
+                    <CardDescription>Manage your subscription plan and payment methods.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-primary/10 rounded-lg">
+                                <CreditCard className="w-5 h-5 text-primary" />
+                            </div>
+                            <div>
+                                <p className="font-medium">Current Plan: <span className="text-primary">Free</span></p>
+                                <p className="text-sm text-muted-foreground">Upgrade to unlock all features</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => setShowPricingModal(true)}>
+                                <Sparkles className="w-4 h-4 mr-2" />
+                                Upgrade
+                            </Button>
+                            <Button variant="ghost" onClick={() => router.push('/settings/billing')}>
+                                Manage
+                                <ArrowRight className="w-4 h-4 ml-2" />
+                            </Button>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
             <Card>
                 <CardHeader>
                     <CardTitle>Appearance</CardTitle>
@@ -217,6 +253,11 @@ export default function SettingsPage() {
                     </div>
                 </CardContent>
             </Card>
+
+            <PricingModal
+                open={showPricingModal}
+                onOpenChange={setShowPricingModal}
+            />
         </div>
     )
 }

@@ -18,6 +18,9 @@ import { ActionItemsModule } from './action-items/action-items.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { ActivityModule } from './activity/activity.module';
 import { ReportsModule } from './reports/reports.module';
+import { FeedbackModule } from './feedback/feedback.module';
+import { IntegrationRequestsModule } from './integration-requests/integration-requests.module';
+import { StripeModule } from './stripe/stripe.module';
 
 @Module({
     imports: [
@@ -38,6 +41,9 @@ import { ReportsModule } from './reports/reports.module';
         OnboardingModule,
         ActivityModule,
         ReportsModule,
+        FeedbackModule,
+        IntegrationRequestsModule,
+        StripeModule,
     ],
     providers: [EncryptionService],
 })

@@ -57,7 +57,7 @@ export default async function MasterControlPage() {
             <div className="flex flex-col items-end">
               <span className="text-xs font-medium text-muted-foreground uppercase">System Status</span>
               <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="font-semibold text-sm">Operational</span>
               </div>
             </div>
@@ -176,7 +176,7 @@ export default async function MasterControlPage() {
           <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
             <span className="text-sm font-medium">API Uptime</span>
             <div className="flex items-center gap-2">
-              <span className="font-mono font-bold text-green-600">{reliability.apiUptime}%</span>
+              <span className="font-mono font-bold text-emerald-600/90">{reliability.apiUptime}%</span>
               <StatusBadge status={reliability.apiUptime > 99 ? 'healthy' : 'degraded'} label={reliability.apiUptime > 99 ? 'OK' : 'Degraded'} />
             </div>
           </div>
@@ -186,7 +186,7 @@ export default async function MasterControlPage() {
           </div>
           <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
             <span className="text-sm font-medium">Error Rate</span>
-            <span className="font-mono font-bold text-green-600">{reliability.errorRate}%</span>
+            <span className="font-mono font-bold text-emerald-600/90">{reliability.errorRate}%</span>
           </div>
           <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
             <span className="text-sm font-medium">Job Failures</span>

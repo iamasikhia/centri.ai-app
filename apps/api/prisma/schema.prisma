@@ -15,14 +15,24 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  integrations Integrations[]
-  meetings     Meeting[]
-  teamMembers  TeamMember[]
-  tasks        Task[]
-  todos        Todo[]
-  syncRuns     SyncRun[]
-  questions    ScheduledQuestion[]
-  updates      UpdateItem[]
+  // Stripe Subscription Fields
+  stripeCustomerId     String?   @unique
+  stripeSubscriptionId String?
+  stripePriceId        String?
+  subscriptionStatus   String?   @default("free") // free, trialing, active, past_due, canceled, unpaid
+  subscriptionTier     String?   @default("free") // free, pro, team, enterprise
+  subscriptionStartDate DateTime?
+  subscriptionEndDate   DateTime?
+  trialEndsAt          DateTime?
+
+  integrations  Integrations[]
+  meetings      Meeting[]
+  teamMembers   TeamMember[]
+  tasks         Task[]
+  todos         Todo[]
+  syncRuns      SyncRun[]
+  questions     ScheduledQuestion[]
+  updates       UpdateItem[]
   opportunities Opportunity[]
   conversations Conversation[]
   stakeholders  Stakeholder[]
@@ -299,3 +309,38 @@ model UserActivity {
   @@index([userId, activityAt])
   @@index([activityAt])
 }
+
+// User feedback from the main app
+model Feedback {
+  id          String   @id @default(uuid())
+  userId      String?
+  userEmail   String?
+  userName    String?
+  type        String   // 'bug', 'feature', 'improvement', 'other'
+  message     String   @db.Text
+  page        String?  // Which page user was on when submitting
+  rating      Int?     // Optional 1-5 rating
+  status      String   @default("new") // 'new', 'reviewed', 'resolved', 'archived'
+  adminNotes  String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([status, createdAt])
+  @@index([type, createdAt])
+}
+
+// Integration requests from users
+model IntegrationRequest {
+  id              String   @id @default(uuid())
+  userId          String?
+  userEmail       String?
+  userName        String?
+  integrationIds  String[] // Array of requested integration IDs
+  status          String   @default("pending") // 'pending', 'under_review', 'planned', 'completed', 'declined'
+  adminNotes      String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([status, createdAt])
+}
+

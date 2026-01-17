@@ -343,10 +343,26 @@ export class IntegrationsService {
       const provider = this.providers[integration.provider];
       if (provider && 'fetchActivity' in provider) {
         try {
-          const tokens = {
-            access_token: this.encryption.decrypt(integration.accessToken),
-            refresh_token: integration.refreshToken ? this.encryption.decrypt(integration.refreshToken) : undefined,
-          };
+          // Fix: Use encryptedBlob which is where tokens are actually stored
+          let tokens: any;
+          if (integration.encryptedBlob) {
+            tokens = JSON.parse(this.encryption.decrypt(integration.encryptedBlob));
+          } else if (integration.accessToken) {
+            // Fallback for legacy entries
+            tokens = {
+              access_token: this.encryption.decrypt(integration.accessToken),
+              refresh_token: integration.refreshToken ? this.encryption.decrypt(integration.refreshToken) : undefined,
+            };
+          } else {
+            console.warn(`[Integration] No tokens found for ${integration.provider}, skipping`);
+            continue;
+          }
+
+          // Validate token exists before proceeding
+          if (!tokens || !tokens.access_token) {
+            console.warn(`[Integration] Invalid token structure for ${integration.provider}, skipping`);
+            continue;
+          }
 
           let data;
           if (integration.provider === 'github') {

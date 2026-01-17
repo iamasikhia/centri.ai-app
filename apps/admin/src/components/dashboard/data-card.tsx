@@ -28,9 +28,9 @@ export function DataCard({
     // Determine color based on intent (e.g. churn up is bad)
     let trendColor = "text-muted-foreground";
     if (intent === 'good') {
-        trendColor = isPositive ? "text-green-600" : (isNegative ? "text-red-600" : "text-muted-foreground");
+        trendColor = isPositive ? "text-emerald-600/90" : (isNegative ? "text-red-600" : "text-muted-foreground");
     } else if (intent === 'bad') {
-        trendColor = isPositive ? "text-red-600" : (isNegative ? "text-green-600" : "text-muted-foreground");
+        trendColor = isPositive ? "text-red-600" : (isNegative ? "text-emerald-600/90" : "text-muted-foreground");
     }
 
     return (

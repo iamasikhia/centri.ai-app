@@ -10,7 +10,7 @@ interface StatusBadgeProps {
 }
 
 const config = {
-    healthy: { icon: CheckCircle2, color: "text-green-600", bg: "bg-green-500/10", border: "border-green-200" },
+    healthy: { icon: CheckCircle2, color: "text-emerald-600/90", bg: "bg-emerald-500/10", border: "border-emerald-200" },
     degraded: { icon: AlertTriangle, color: "text-yellow-600", bg: "bg-yellow-500/10", border: "border-yellow-200" },
     down: { icon: XCircle, color: "text-red-600", bg: "bg-red-500/10", border: "border-red-200" },
     maintenance: { icon: AlertCircle, color: "text-blue-600", bg: "bg-blue-500/10", border: "border-blue-200" },

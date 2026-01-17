@@ -13,12 +13,13 @@ interface OnboardingOverlayProps {
     onConnectCalendar: () => Promise<void>;
 }
 
-type Step = 'welcome' | 'goals' | 'integrations';
+type Step = 'welcome' | 'goals' | 'team-setup' | 'integrations';
 
 interface Goal {
     id: string;
     statement: string;
     icon: string;
+    isEngineering?: boolean;
 }
 
 interface Integration {
@@ -33,7 +34,8 @@ const GOALS: Goal[] = [
     {
         id: 'engineering-tracking',
         statement: 'I want to keep track of what is going on with my Engineering team',
-        icon: '👨‍💻'
+        icon: '👨‍💻',
+        isEngineering: true
     },
     {
         id: 'slack-checkins',
@@ -43,22 +45,26 @@ const GOALS: Goal[] = [
     {
         id: 'meeting-prep',
         statement: 'I want to get prepped for technical meetings',
-        icon: '📅'
+        icon: '📅',
+        isEngineering: true
     },
     {
         id: 'codebase-understanding',
         statement: 'I want to understand the codebase',
-        icon: '🧠'
+        icon: '🧠',
+        isEngineering: true
     },
-    {
-        id: 'stakeholder-updates',
-        statement: 'I want a reminder to send out stakeholder updates',
-        icon: '📊'
-    },
+
     {
         id: 'decision-tracking',
         statement: 'I want to track decisions made across meetings',
         icon: '✅'
+    },
+
+    {
+        id: 'action-items',
+        statement: 'I want to automatically capture action items from calls',
+        icon: '📝'
     },
 ];
 
@@ -123,7 +129,7 @@ const INTEGRATIONS: Integration[] = [
         id: 'fathom',
         name: 'Fathom',
         description: 'AI Meeting Recorder.',
-        logo: 'https://assets-global.website-files.com/60e5f2de011b865a07ccaa5f/60e5f2de011b8638e7ccab19_fathom-logo-purple.svg'
+        logo: 'https://fathom.video/images/fathom-logo.svg'
     },
 ];
 
@@ -132,6 +138,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
     const [step, setStep] = useState<Step>('welcome');
     const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
     const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>([]);
+    const [hasEngineeringTeam, setHasEngineeringTeam] = useState<boolean | null>(null);
 
     const toggleGoal = (id: string) => {
         setSelectedGoals(prev =>
@@ -149,6 +156,8 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
         // Save selections to localStorage for personalization
         localStorage.setItem('user_goals', JSON.stringify(selectedGoals));
         localStorage.setItem('selected_integrations', JSON.stringify(selectedIntegrations));
+        localStorage.setItem('has_engineering_team', String(hasEngineeringTeam ?? false));
+        localStorage.setItem('uses_slack', String(selectedIntegrations.includes('slack')));
 
         // Send onboarding response to backend API
         try {
@@ -161,7 +170,9 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
                 },
                 body: JSON.stringify({
                     selectedGoals,
-                    selectedIntegrations
+                    selectedIntegrations,
+                    hasEngineeringTeam: hasEngineeringTeam ?? false,
+                    usesSlack: selectedIntegrations.includes('slack')
                 })
             });
         } catch (e) {
@@ -203,17 +214,48 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 
                                 <div className="space-y-3">
                                     <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-zinc-900 dark:text-white">
-                                        Welcome to Centri
+                                        {"Hi I'm Centri".split('').map((char, index) => (
+                                            <motion.span
+                                                key={index}
+                                                initial={{ opacity: 0, y: 10 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                transition={{
+                                                    duration: 0.15,
+                                                    delay: 0.3 + index * 0.05,
+                                                    ease: "easeOut"
+                                                }}
+                                                className="inline-block"
+                                                style={{ whiteSpace: char === ' ' ? 'pre' : 'normal' }}
+                                            >
+                                                {char === ' ' ? '\u00A0' : char}
+                                            </motion.span>
+                                        ))}
+                                        <motion.span
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: [0, 1, 0] }}
+                                            transition={{
+                                                duration: 0.8,
+                                                delay: 1.0,
+                                                repeat: 2,
+                                                ease: "linear"
+                                            }}
+                                            className="inline-block ml-1 w-[3px] h-[1em] bg-violet-500 align-middle"
+                                        />
                                     </h1>
-                                    <p className="text-xl text-zinc-600 dark:text-zinc-400 max-w-lg mx-auto">
-                                        Your Meeting Intelligence AI. Let's personalize your experience.
-                                    </p>
+                                    <motion.p
+                                        className="text-xl text-zinc-600 dark:text-zinc-400 max-w-lg mx-auto"
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        transition={{ delay: 1.2, duration: 0.5 }}
+                                    >
+                                        Your AI-powered Meeting Intelligence Assistant.
+                                    </motion.p>
                                 </div>
 
                                 <Button
                                     size="lg"
                                     className="text-lg h-14 px-10 gap-3 shadow-lg hover:shadow-primary/20 transition-all"
-                                    onClick={() => setStep('goals')}
+                                    onClick={() => setStep('team-setup')}
                                 >
                                     Get Started
                                     <ArrowRight className="w-5 h-5" />
@@ -221,7 +263,111 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
                             </motion.div>
                         )}
 
-                        {/* STEP 2: GOALS / INTENT SELECTION */}
+                        {/* STEP 2: TEAM SETUP - Engineering Team Question */}
+                        {step === 'team-setup' && (
+                            <motion.div
+                                key="team-setup"
+                                initial={{ opacity: 0, y: 30 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -30 }}
+                                transition={{ duration: 0.4 }}
+                                className="space-y-8"
+                            >
+                                <div className="text-center space-y-3">
+                                    <div className="mx-auto w-16 h-16 mb-2">
+                                        <Image
+                                            src="/logo.png"
+                                            alt="Centri Logo"
+                                            width={64}
+                                            height={64}
+                                            className="rounded-xl shadow-lg"
+                                        />
+                                    </div>
+                                    <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white">
+                                        Do you have an engineering team?
+                                    </h1>
+                                    <p className="text-lg text-zinc-600 dark:text-zinc-400 max-w-lg mx-auto">
+                                        This helps us show you the right features and data.
+                                    </p>
+                                </div>
+
+                                {/* Yes/No Options */}
+                                <div className="flex flex-col md:flex-row gap-4 max-w-2xl mx-auto">
+                                    <motion.button
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: 0.1 }}
+                                        onClick={() => setHasEngineeringTeam(true)}
+                                        className={`
+                                            flex-1 group flex flex-col items-center gap-4 p-8 rounded-2xl border-2 transition-all duration-200
+                                            ${hasEngineeringTeam === true
+                                                ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 shadow-lg shadow-violet-500/10'
+                                                : 'border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:border-violet-300 dark:hover:border-violet-700 hover:shadow-md'
+                                            }
+                                        `}
+                                    >
+                                        <span className="text-5xl">👨‍💻</span>
+                                        <div className="text-center">
+                                            <h3 className={`text-xl font-bold mb-1 ${hasEngineeringTeam === true ? 'text-violet-700 dark:text-violet-300' : 'text-zinc-900 dark:text-white'}`}>
+                                                Yes, I do
+                                            </h3>
+                                            <p className="text-sm text-zinc-500">
+                                                I manage or work with developers
+                                            </p>
+                                        </div>
+                                        {hasEngineeringTeam === true && (
+                                            <div className="w-6 h-6 rounded-full bg-violet-500 flex items-center justify-center">
+                                                <Check className="w-4 h-4 text-white" strokeWidth={3} />
+                                            </div>
+                                        )}
+                                    </motion.button>
+
+                                    <motion.button
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: 0.2 }}
+                                        onClick={() => setHasEngineeringTeam(false)}
+                                        className={`
+                                            flex-1 group flex flex-col items-center gap-4 p-8 rounded-2xl border-2 transition-all duration-200
+                                            ${hasEngineeringTeam === false
+                                                ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 shadow-lg shadow-violet-500/10'
+                                                : 'border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:border-violet-300 dark:hover:border-violet-700 hover:shadow-md'
+                                            }
+                                        `}
+                                    >
+                                        <span className="text-5xl">📊</span>
+                                        <div className="text-center">
+                                            <h3 className={`text-xl font-bold mb-1 ${hasEngineeringTeam === false ? 'text-violet-700 dark:text-violet-300' : 'text-zinc-900 dark:text-white'}`}>
+                                                No, I don't
+                                            </h3>
+                                            <p className="text-sm text-zinc-500">
+                                                I focus on product, ops, or business
+                                            </p>
+                                        </div>
+                                        {hasEngineeringTeam === false && (
+                                            <div className="w-6 h-6 rounded-full bg-violet-500 flex items-center justify-center">
+                                                <Check className="w-4 h-4 text-white" strokeWidth={3} />
+                                            </div>
+                                        )}
+                                    </motion.button>
+                                </div>
+
+                                {/* Continue Button */}
+                                <div className="flex flex-col items-center gap-3 pt-4">
+                                    <Button
+                                        size="lg"
+                                        className="w-full md:w-80 text-lg h-14 gap-3 shadow-lg hover:shadow-primary/20 transition-all"
+                                        onClick={() => setStep('goals')}
+                                        disabled={hasEngineeringTeam === null}
+                                    >
+                                        Continue
+                                        <ArrowRight className="w-5 h-5" />
+                                    </Button>
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {/* STEP 3: GOALS SELECTION */}
                         {step === 'goals' && (
                             <motion.div
                                 key="goals"
@@ -251,44 +397,46 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 
                                 {/* Goals Grid */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto">
-                                    {GOALS.map((goal, index) => {
-                                        const isSelected = selectedGoals.includes(goal.id);
-                                        return (
-                                            <motion.button
-                                                key={goal.id}
-                                                initial={{ opacity: 0, y: 20 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                transition={{ delay: index * 0.08 }}
-                                                onClick={() => toggleGoal(goal.id)}
-                                                className={`
+                                    {GOALS
+                                        .filter(goal => hasEngineeringTeam !== false || !goal.isEngineering)
+                                        .map((goal, index) => {
+                                            const isSelected = selectedGoals.includes(goal.id);
+                                            return (
+                                                <motion.button
+                                                    key={goal.id}
+                                                    initial={{ opacity: 0, y: 20 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    transition={{ delay: index * 0.08 }}
+                                                    onClick={() => toggleGoal(goal.id)}
+                                                    className={`
                                                     relative group flex items-start gap-4 p-5 rounded-2xl border-2 transition-all duration-200 text-left
                                                     ${isSelected
-                                                        ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 shadow-lg shadow-violet-500/10'
-                                                        : 'border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:border-violet-300 dark:hover:border-violet-700 hover:shadow-md'
-                                                    }
+                                                            ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 shadow-lg shadow-violet-500/10'
+                                                            : 'border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:border-violet-300 dark:hover:border-violet-700 hover:shadow-md'
+                                                        }
                                                 `}
-                                            >
-                                                {/* Selection Indicator */}
-                                                <div className={`
+                                                >
+                                                    {/* Selection Indicator */}
+                                                    <div className={`
                                                     w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all duration-200
                                                     ${isSelected
-                                                        ? 'border-violet-500 bg-violet-500'
-                                                        : 'border-zinc-300 dark:border-zinc-600 group-hover:border-violet-400'
-                                                    }
+                                                            ? 'border-violet-500 bg-violet-500'
+                                                            : 'border-zinc-300 dark:border-zinc-600 group-hover:border-violet-400'
+                                                        }
                                                 `}>
-                                                    {isSelected && <Check className="w-4 h-4 text-white" strokeWidth={3} />}
-                                                </div>
+                                                        {isSelected && <Check className="w-4 h-4 text-white" strokeWidth={3} />}
+                                                    </div>
 
-                                                {/* Icon & Text */}
-                                                <div className="flex-1">
-                                                    <span className="text-2xl mb-2 block">{goal.icon}</span>
-                                                    <p className={`font-medium leading-snug transition-colors ${isSelected ? 'text-zinc-900 dark:text-white' : 'text-zinc-600 dark:text-zinc-400'}`}>
-                                                        {goal.statement}
-                                                    </p>
-                                                </div>
-                                            </motion.button>
-                                        );
-                                    })}
+                                                    {/* Icon & Text */}
+                                                    <div className="flex-1">
+                                                        <span className="text-2xl mb-2 block">{goal.icon}</span>
+                                                        <p className={`font-medium leading-snug transition-colors ${isSelected ? 'text-zinc-900 dark:text-white' : 'text-zinc-600 dark:text-zinc-400'}`}>
+                                                            {goal.statement}
+                                                        </p>
+                                                    </div>
+                                                </motion.button>
+                                            );
+                                        })}
                                 </div>
 
                                 {/* Continue Button */}
@@ -309,7 +457,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
                             </motion.div>
                         )}
 
-                        {/* STEP 3: INTEGRATIONS SELECTION */}
+                        {/* STEP 4: INTEGRATIONS SELECTION */}
                         {step === 'integrations' && (
                             <motion.div
                                 key="integrations"
@@ -321,7 +469,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
                             >
                                 <div className="text-center space-y-3">
                                     <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white">
-                                        Which tools do you use?
+                                        Which of these platforms do you actively use?
                                     </h1>
                                     <p className="text-lg text-zinc-600 dark:text-zinc-400 max-w-lg mx-auto">
                                         Select the tools you'd like to connect. You'll set them up next.

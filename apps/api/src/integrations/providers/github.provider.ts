@@ -34,10 +34,24 @@ export class GithubProvider implements IProvider {
     }
 
     async syncData(token: any): Promise<any> {
+        // Validate token
+        if (!token || !token.access_token) {
+            throw new Error('GitHub token is missing or invalid');
+        }
+
         const headers = { Authorization: `Bearer ${token.access_token}` };
 
-        // Fetch user info
-        const userRes = await axios.get('https://api.github.com/user', { headers });
+        // Fetch user info - this also validates the token
+        let userRes;
+        try {
+            userRes = await axios.get('https://api.github.com/user', { headers });
+        } catch (authError: any) {
+            if (authError.response?.status === 401) {
+                console.error('[Github] Token is invalid or expired during sync');
+                throw new Error('GitHub token is invalid or expired. Please reconnect your GitHub account.');
+            }
+            throw authError;
+        }
         const user = userRes.data;
 
         // Fetch repositories
@@ -85,13 +99,27 @@ export class GithubProvider implements IProvider {
 
     async fetchActivity(token: string): Promise<any> {
         try {
+            // Validate token before making requests
+            if (!token) {
+                throw new Error('GitHub token is missing or invalid');
+            }
+
             const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' };
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
             const dateStr = sevenDaysAgo.toISOString().split('T')[0];
 
-            // 0. Get User Identity
-            const userRes = await axios.get('https://api.github.com/user', { headers });
+            // 0. Get User Identity - this also validates the token
+            let userRes;
+            try {
+                userRes = await axios.get('https://api.github.com/user', { headers });
+            } catch (authError: any) {
+                if (authError.response?.status === 401) {
+                    console.error('[Github] Token is invalid or expired');
+                    throw new Error('GitHub token is invalid or expired. Please reconnect your GitHub account.');
+                }
+                throw authError;
+            }
             const username = userRes.data.login;
 
             console.log(`[Github] Fetching activity for user: ${username}`);

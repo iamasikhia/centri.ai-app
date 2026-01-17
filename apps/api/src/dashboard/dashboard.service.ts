@@ -144,7 +144,8 @@ export class DashboardService {
             confidence: (m as any).calendarEventConfidence,
             reason: (m as any).calendarEventReasoning,
             decisions: m.decisionsJson ? JSON.parse(m.decisionsJson) : [],
-            blockers: (m as any).blockersJson ? JSON.parse((m as any).blockersJson) : []
+            blockers: (m as any).blockersJson ? JSON.parse((m as any).blockersJson) : [],
+            actionItems: m.actionItemsJson ? JSON.parse(m.actionItemsJson) : []
         }));
 
         // 4. Tasks (All active or recently updated)
@@ -250,11 +251,17 @@ export class DashboardService {
                     const items = JSON.parse(meeting.actionItemsJson);
                     if (Array.isArray(items)) {
                         totalActionItems += items.length;
-                        items.slice(0, 3).forEach((item: any, idx: number) => {
-                            const title = typeof item === 'string' ? item : item.item || item.title || item.action;
-                            const completed = typeof item === 'object' ? item.completed : false;
-                            if (!completed) openActionItems++;
 
+                        // Count ALL open items (not just first 3)
+                        items.forEach((item: any, idx: number) => {
+                            const title = typeof item === 'string' ? item : item.description || item.item || item.title || item.action;
+                            const completed = typeof item === 'object' ? (item.completed === true || item.status === 'completed' || item.status === 'done') : false;
+
+                            if (!completed) {
+                                openActionItems++;
+                            }
+
+                            // Only add to recentActionItems for display (limit to 5 total)
                             if (recentActionItems.length < 5) {
                                 recentActionItems.push({
                                     id: `ai-${meeting.id}-${idx}`,
@@ -275,6 +282,12 @@ export class DashboardService {
             where: { userId }
         });
 
+        // 8. In Progress Tasks - Tasks from meetings/Slack that team is working on
+        // This includes: open tasks ONLY (action items must be converted to tasks first)
+        const inProgressTasks = tasksRaw.filter(t =>
+            t.status === 'open' || t.status === 'in-progress' || t.status === 'in_progress' || t.status === 'pending'
+        ).length;
+
         const result = {
             lastSyncedAt: lastSync?.finishedAt?.toISOString() || null,
             people,
@@ -287,6 +300,7 @@ export class DashboardService {
             totalActionItems,
             openActionItems,
             recentActionItems,
+            inProgressTasks,
             stakeholderCount,
             realityCheck, // New AI Insight Field
             focusTasks: [],
@@ -373,12 +387,12 @@ export class DashboardService {
      * The "magic" cross-source synthesis that brings everything together.
      * This is the killer feature that justifies the platform.
      */
-    async getUnifiedIntelligence(userId: string, forceRefresh = false) {
+    async getUnifiedIntelligence(userId: string, forceRefresh = false, repo?: string) {
         // Check cache first (unless force refresh)
-        const cacheKey = `intelligence:${userId}`;
+        const cacheKey = `intelligence:${userId}:${repo || 'all'}`;
         const cached = this.dashboardCache.get(cacheKey);
         if (!forceRefresh && cached && Date.now() - cached.timestamp < this.CACHE_TTL_MS) {
-            console.log(`[Intelligence] Returning cached data for ${userId}`);
+            console.log(`[Intelligence] Returning cached data for ${userId} (repo: ${repo || 'all'})`);
             return cached.data;
         }
 
@@ -412,7 +426,7 @@ export class DashboardService {
                     if (Array.isArray(parsed)) {
                         parsed.forEach(d => {
                             decisions.push({
-                                text: typeof d === 'string' ? d : d.text || d.decision,
+                                text: typeof d === 'string' ? d : d.text || d.text || d.decision,
                                 meeting: m.title,
                                 date: m.startTime
                             });
@@ -494,6 +508,39 @@ export class DashboardService {
             metrics: dashboardData.githubIntelligence?.metrics || {}
         };
 
+        const now = new Date();
+
+        // Calculate recent commits count
+        let commitsCount = 0;
+        if (dashboardData.githubIntelligence?.rawData?.commits) {
+            commitsCount = dashboardData.githubIntelligence.rawData.commits.filter((c: any) =>
+                (now.getTime() - new Date(c.date).getTime()) <= 7 * 24 * 60 * 60 * 1000 &&
+                (!repo || c.repo.includes(repo))
+            ).length;
+        }
+
+        // Calculate merged PRs count
+        let mergedPrsCount = 0;
+        if (dashboardData.githubIntelligence?.rawData?.prs) {
+            mergedPrsCount = dashboardData.githubIntelligence.rawData.prs.filter((p: any) =>
+                p.merged && (now.getTime() - new Date(p.merged_at).getTime()) <= 7 * 24 * 60 * 60 * 1000 &&
+                (!repo || p.repo.includes(repo))
+            ).length;
+        }
+
+        // Calculate Active Repos & Contributors (Last 7 Days)
+        let activeReposCount = 0;
+        let contributorsCount = 0;
+        if (dashboardData.githubIntelligence?.rawData?.commits) {
+            const recentCommits = dashboardData.githubIntelligence.rawData.commits.filter((c: any) =>
+                (now.getTime() - new Date(c.date).getTime()) <= 7 * 24 * 60 * 60 * 1000 &&
+                (!repo || c.repo.includes(repo))
+            );
+
+            activeReposCount = new Set(recentCommits.map((c: any) => c.repo)).size;
+            contributorsCount = new Set(recentCommits.map((c: any) => c.author)).size;
+        }
+
         // 5. Create cross-reference insights (the magic!)
         const crossReferenceInsights: any[] = [];
 
@@ -539,6 +586,11 @@ export class DashboardService {
             meetingsThisWeek: meetings.length,
             decisionsCount: decisions.length,
             teamResponsesCount: teamPulse.reduce((acc, q) => acc + q.responses.length, 0),
+            blockersCount: dashboardData.totalBlockers || 0,
+            commitsCount,
+            mergedPrsCount,
+            activeReposCount,
+            contributorsCount,
             githubActivity: githubSummary.metrics,
             crossReferenceCount: crossReferenceInsights.length
         };

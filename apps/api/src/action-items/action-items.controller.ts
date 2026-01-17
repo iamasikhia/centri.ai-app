@@ -33,11 +33,11 @@ export class ActionItemsController {
                     const items = JSON.parse(meeting.actionItemsJson);
                     if (Array.isArray(items)) {
                         items.forEach((item: any, idx: number) => {
-                            // Items could be strings or objects
-                            const title = typeof item === 'string' ? item : item.item || item.title || item.action;
+                            // Items could be strings or objects - description is the OpenAI format
+                            const title = typeof item === 'string' ? item : item.description || item.item || item.title || item.action;
                             const owner = typeof item === 'object' ? (item.owner || item.assignee || 'Unassigned') : 'Unassigned';
                             const dueDate = typeof item === 'object' ? item.dueDate : null;
-                            const status = typeof item === 'object' ? (item.completed ? 'completed' : 'open') : 'open';
+                            const status = typeof item === 'object' ? (item.completed === true || item.status === 'completed' || item.status === 'done' ? 'completed' : 'open') : 'open';
 
                             actionItems.push({
                                 id: `meeting-${meeting.id}-${idx}`,
@@ -154,5 +154,126 @@ export class ActionItemsController {
         // For meeting-based items, we'd need to update the JSON
         // This is more complex, so we'll skip for now
         return { success: false, message: 'Cannot toggle meeting-based items yet' };
+    }
+
+    @Post(':id/convert-to-task')
+    async convertToTask(
+        @Headers('x-user-id') userId: string,
+        @Param('id') id: string,
+        @Body() body: { title: string; owner?: string; priority?: string; meetingId?: string; itemIndex?: number }
+    ) {
+        if (!userId) throw new UnauthorizedException('User ID required');
+
+        // 1. Create a task from the action item
+        const task = await this.prisma.task.create({
+            data: {
+                userId,
+                externalId: `from-meeting-${id}-${Date.now()}`,
+                title: body.title,
+                status: 'open',
+                assigneeEmail: body.owner || null,
+                priority: body.priority || 'medium'
+            }
+        });
+
+        // 2. Mark the action item as completed in the meeting record
+        if (body.meetingId !== undefined && body.itemIndex !== undefined) {
+            try {
+                const meeting = await this.prisma.meeting.findFirst({
+                    where: { id: body.meetingId, userId }
+                });
+
+                if (meeting && meeting.actionItemsJson) {
+                    const items = JSON.parse(meeting.actionItemsJson);
+                    if (Array.isArray(items) && items[body.itemIndex]) {
+                        // Mark as completed
+                        if (typeof items[body.itemIndex] === 'object') {
+                            items[body.itemIndex].completed = true;
+                            items[body.itemIndex].convertedToTaskId = task.id;
+                            items[body.itemIndex].convertedAt = new Date().toISOString();
+                        } else {
+                            // If it's a string, convert to object
+                            items[body.itemIndex] = {
+                                description: items[body.itemIndex],
+                                completed: true,
+                                convertedToTaskId: task.id,
+                                convertedAt: new Date().toISOString()
+                            };
+                        }
+
+                        await this.prisma.meeting.update({
+                            where: { id: body.meetingId },
+                            data: { actionItemsJson: JSON.stringify(items) }
+                        });
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to update meeting action item:', e);
+            }
+        }
+
+        return {
+            success: true,
+            task: {
+                id: `task-${task.id}`,
+                title: task.title,
+                owner: task.assigneeEmail?.split('@')[0] || 'Unassigned',
+                status: 'open',
+                priority: task.priority,
+                createdAt: task.createdAt.toISOString()
+            }
+        };
+    }
+
+    @Put(':id/dismiss')
+    async dismiss(
+        @Headers('x-user-id') userId: string,
+        @Param('id') id: string,
+        @Body() body: { meetingId?: string; itemIndex?: number; reason?: string }
+    ) {
+        if (!userId) throw new UnauthorizedException('User ID required');
+
+        // Mark the action item as completed/dismissed in the meeting record
+        if (body.meetingId !== undefined && body.itemIndex !== undefined) {
+            try {
+                const meeting = await this.prisma.meeting.findFirst({
+                    where: { id: body.meetingId, userId }
+                });
+
+                if (meeting && meeting.actionItemsJson) {
+                    const items = JSON.parse(meeting.actionItemsJson);
+                    if (Array.isArray(items) && items[body.itemIndex]) {
+                        // Mark as completed/dismissed
+                        if (typeof items[body.itemIndex] === 'object') {
+                            items[body.itemIndex].completed = true;
+                            items[body.itemIndex].dismissed = true;
+                            items[body.itemIndex].dismissedReason = body.reason || 'Marked as done';
+                            items[body.itemIndex].dismissedAt = new Date().toISOString();
+                        } else {
+                            // If it's a string, convert to object
+                            items[body.itemIndex] = {
+                                description: items[body.itemIndex],
+                                completed: true,
+                                dismissed: true,
+                                dismissedReason: body.reason || 'Marked as done',
+                                dismissedAt: new Date().toISOString()
+                            };
+                        }
+
+                        await this.prisma.meeting.update({
+                            where: { id: body.meetingId },
+                            data: { actionItemsJson: JSON.stringify(items) }
+                        });
+
+                        return { success: true, message: 'Action item dismissed' };
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to dismiss action item:', e);
+                return { success: false, message: 'Failed to dismiss action item' };
+            }
+        }
+
+        return { success: false, message: 'Meeting ID and item index required' };
     }
 }

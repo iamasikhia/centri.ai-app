@@ -256,16 +256,34 @@ export default function IntegrationsPage() {
     );
   };
 
-  const handleSubmitRequest = () => {
-    // In a real app, this would send to backend
-    console.log('Requested integrations:', selectedPlatforms);
-    localStorage.setItem('requested_integrations', JSON.stringify(selectedPlatforms));
-    setSubmitted(true);
-    setTimeout(() => {
-      setShowRequestModal(false);
-      setSubmitted(false);
-      setSelectedPlatforms([]);
-    }, 2000);
+  const handleSubmitRequest = async () => {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    try {
+      await fetch(`${API_URL}/integration-requests`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userId,
+        },
+        body: JSON.stringify({ integrationIds: selectedPlatforms }),
+      });
+      setSubmitted(true);
+      setTimeout(() => {
+        setShowRequestModal(false);
+        setSubmitted(false);
+        setSelectedPlatforms([]);
+      }, 2000);
+    } catch (e) {
+      console.error('Failed to submit integration request:', e);
+      // Fallback to localStorage
+      localStorage.setItem('requested_integrations', JSON.stringify(selectedPlatforms));
+      setSubmitted(true);
+      setTimeout(() => {
+        setShowRequestModal(false);
+        setSubmitted(false);
+        setSelectedPlatforms([]);
+      }, 2000);
+    }
   };
 
   if (loading) {

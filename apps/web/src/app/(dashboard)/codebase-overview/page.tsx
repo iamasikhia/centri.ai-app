@@ -9,10 +9,15 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { BookOpen, Sparkles, FileText, AlertCircle, Loader2, FolderTree, Package, GitBranch, Code2, FileCode, Clock, Lightbulb, MessageCircle, Send, User, Bot } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import ReactMarkdown from 'react-markdown';
-import { MermaidChart } from '@/components/mermaid-chart';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import dynamic from 'next/dynamic';
+
+const MermaidChart = dynamic(() => import('@/components/mermaid-chart').then(mod => mod.MermaidChart), {
+    loading: () => <div className="h-64 w-full animate-pulse bg-muted rounded-xl" />,
+    ssr: false
+});
 
 interface CodebaseAnalysis {
     repository: string;

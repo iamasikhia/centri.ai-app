@@ -40,6 +40,7 @@ export interface Meeting {
     reason?: string;
     decisions?: string[];
     blockers?: string[];
+    actionItems?: Array<{ description?: string; item?: string; title?: string; action?: string; owner?: string; assignee?: string; completed?: boolean; status?: string; priority?: string; }>;
 }
 
 export interface Repository {
@@ -176,6 +177,8 @@ export interface DashboardViewModel {
     githubRepositories?: Repository[];
     githubRawData?: { commits: any[], prs: any[], releases: any[] };
     meetings?: Meeting[];
+    allTasks?: Task[];
+    stakeholders?: any[];
 }
 
 
@@ -252,6 +255,7 @@ export function buildDashboardViewModel(
         totalActionItems?: number,
         openActionItems?: number,
         recentActionItems?: any[],
+        inProgressTasks?: number,
         stakeholderCount?: number
     },
     now = new Date()
@@ -387,14 +391,26 @@ export function buildDashboardViewModel(
     let baseMetrics: DetailedMetric[] = [];
 
     if (gh && gh.metrics) {
-        baseMetrics = gh.metrics.map((m: any) => ({ ...m, source: 'github' }));
+        // Filter out repo-updates from GitHub metrics
+        baseMetrics = gh.metrics.filter((m: any) => m.id !== 'repo-updates').map((m: any) => ({ ...m, source: 'github' }));
     } else {
         // Fallback Mocks (if no GitHub)
         baseMetrics = [
-            { id: 'repo-updates', title: 'Team Activity', value: 0, description: 'Connect GitHub to track', trendLabel: '-', trendDirection: 'flat' },
-            { id: 'eng-changes', title: 'Features Completed', value: 0, description: 'Connect GitHub to track', trendLabel: '-', trendDirection: 'flat' },
-            { id: 'shipped', title: 'Releases to Users', value: 0, description: 'Connect GitHub to track', trendLabel: '-', trendDirection: 'flat' }
+            { id: 'in-progress', title: 'In Progress Tasks', value: 0, description: 'Tasks from meetings & Slack', trendLabel: '-', trendDirection: 'flat' }
         ];
+    }
+
+    // Add Action Items - Critical for PMs - Prioritized as FIRST metric
+    if (data.openActionItems !== undefined) {
+        baseMetrics.unshift({
+            id: 'action-items',
+            title: 'Open Action Items',
+            value: data.openActionItems,
+            description: 'Follow-ups from meetings',
+            trendLabel: data.openActionItems > 5 ? 'Review needed' : 'On track',
+            trendDirection: data.openActionItems > 5 ? 'down' : 'up',
+            subtext: `${data.totalActionItems || 0} total this week`
+        });
     }
 
     // Add Internal Ops indicators (Blocked items from tasks)
@@ -418,17 +434,26 @@ export function buildDashboardViewModel(
         trendDirection: 'up'
     });
 
-    // Add Action Items - Critical for PMs
-    if (data.openActionItems !== undefined) {
-        baseMetrics.push({
-            id: 'action-items',
-            title: 'Open Action Items',
-            value: data.openActionItems,
-            description: 'Follow-ups from meetings',
-            trendLabel: data.openActionItems > 5 ? 'Review needed' : 'On track',
-            trendDirection: data.openActionItems > 5 ? 'down' : 'up',
-            subtext: `${data.totalActionItems || 0} total this week`
-        });
+
+
+    // Add In Progress Tasks - Tasks team is actively working on
+    if (data.inProgressTasks !== undefined) {
+        // Find and replace the placeholder metric, or add new one
+        const existingIdx = baseMetrics.findIndex(m => m.id === 'in-progress');
+        const inProgressMetric = {
+            id: 'in-progress',
+            title: 'In Progress Tasks',
+            value: data.inProgressTasks,
+            description: 'Tasks from meetings & Slack',
+            trendLabel: data.inProgressTasks > 0 ? 'Active' : 'None',
+            trendDirection: 'up' as const
+        };
+
+        if (existingIdx >= 0) {
+            baseMetrics[existingIdx] = inProgressMetric;
+        } else {
+            baseMetrics.push(inProgressMetric);
+        }
     }
 
     const executive: ExecutiveMetrics = { metrics: baseMetrics };
@@ -561,6 +586,8 @@ export function buildDashboardViewModel(
         githubRepositories: gh ? gh.repositories : [],
         githubRawData: gh ? gh.rawData : undefined,
         meetings: data.meetings, // Pass through the full meetings list (which should include decisions/blockers from backend)
+        allTasks: data.tasks || [], // Expose all tasks for sidebar usage
+        stakeholders: data.stakeholderCount ? Array(data.stakeholderCount).fill({}) : [], // Placeholder for count display
     };
 }
 
@@ -617,7 +644,15 @@ export function calculateExecutionMomentum(
     const workRhythmScore = Math.min(100, Math.max(0, (activityCount * 5) + 50));
     const collaborationHealth = 85;
 
-    const meetingHours = meetingsCompleted * 0.75;
+    // Calculate actual meeting hours from duration
+    const meetingHours = meetings ? meetings.filter(m => {
+        const end = new Date(m.endTime);
+        return end >= sevenDaysAgo && end < nowMomentum;
+    }).reduce((acc, m) => {
+        const durationMs = new Date(m.endTime).getTime() - new Date(m.startTime).getTime();
+        return acc + (durationMs / (1000 * 60 * 60));
+    }, 0) : 0;
+
     const totalHours = 40;
     const focusTimePercentage = Math.round(((totalHours - meetingHours) / totalHours) * 100);
 
@@ -638,7 +673,7 @@ export function calculateExecutionMomentum(
     const makerTimeHours = Math.max(0, totalHours - meetingHours);
     const meetingMakerRatio = Math.round((meetingHours / totalHours) * 100);
 
-    let investmentDistribution = { features: 60, bugs: 25, techDebt: 15 };
+    let investmentDistribution = { features: 0, bugs: 0, techDebt: 0 };
     if (githubRawData && githubRawData.prs && githubRawData.prs.length > 0) {
         let feats = 0, fixes = 0, debt = 0;
         const total = githubRawData.prs.length;

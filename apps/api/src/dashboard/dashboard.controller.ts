@@ -30,9 +30,9 @@ export class DashboardController {
      * Returns cross-source synthesis of Meetings + GitHub + Slack Check-ins
      */
     @Get('intelligence')
-    async getUnifiedIntelligence(@Req() req, @Query('refresh') refresh?: string) {
+    async getUnifiedIntelligence(@Req() req, @Query('refresh') refresh?: string, @Query('repo') repo?: string) {
         const userId = req.headers['x-user-id'] || 'default-user-id';
         const forceRefresh = refresh === 'true';
-        return this.dashboardService.getUnifiedIntelligence(userId, forceRefresh);
+        return this.dashboardService.getUnifiedIntelligence(userId, forceRefresh, repo);
     }
 }

@@ -10,10 +10,14 @@ export class ZoomProvider implements IProvider {
     getAuthUrl(redirectUri: string): string {
         const clientId = this.config.get('ZOOM_CLIENT_ID');
 
+        // Scopes needed for meeting data and transcript access
+        const scopes = ['meeting:read', 'recording:read', 'user:read'].join(' ');
+
         const params = new URLSearchParams({
             response_type: 'code',
             client_id: clientId,
             redirect_uri: redirectUri,
+            scope: scopes,
         });
 
         return `https://zoom.us/oauth/authorize?${params.toString()}`;

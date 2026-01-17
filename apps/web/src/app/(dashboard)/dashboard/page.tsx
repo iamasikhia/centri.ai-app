@@ -18,7 +18,7 @@ import {
     RefreshCw, AlertCircle, Clock, CheckCircle2,
     ArrowUpRight, ArrowDownRight, Minus, Sparkles,
     Zap, GitMerge, GitPullRequest, Activity, AlertTriangle,
-    Github, Layers, Mic, Calendar, FileText
+    Github, Layers, Mic, Calendar, FileText, Users, MessageSquare
 } from 'lucide-react';
 import { buildDashboardViewModel, DashboardViewModel, DetailedMetric, ProductFeature, RiskItem, calculateExecutionMomentum } from '@/lib/dashboard-utils';
 import { cn } from '@/lib/utils';
@@ -29,6 +29,7 @@ import { UpcomingCalls } from '@/components/dashboard/upcoming-calls';
 import { MeetingPrepCard } from '@/components/dashboard/meeting-prep-card';
 import UnifiedIntelligence from '@/components/dashboard/unified-intelligence';
 import { OnboardingOverlay } from '@/components/dashboard/onboarding-overlay';
+import { useTeamMode } from '@/contexts/team-mode-context';
 
 // --- Components ---
 
@@ -36,32 +37,58 @@ function MetricCard({ metric, onClick }: { metric: DetailedMetric, onClick: () =
     const SourceIcon = metric.source === 'github' ? Github : (metric.source === 'internal' ? Layers : null);
     const sourceLabel = metric.source === 'github' ? 'Source: GitHub' : 'Source: Internal Tracker';
 
+    // Dynamic gradient based on trend
+    const gradientClass = metric.trendDirection === 'up'
+        ? 'from-emerald-500/5 to-transparent'
+        : metric.trendDirection === 'down'
+            ? 'from-red-500/5 to-transparent'
+            : 'from-slate-500/5 to-transparent';
+
     return (
         <Card
             onClick={onClick}
-            className="flex flex-col h-full hover:shadow-md transition-all duration-200 cursor-pointer hover:border-primary/50 active:scale-[0.98]"
+            className={cn(
+                "group relative flex flex-col h-full overflow-hidden",
+                "hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 cursor-pointer",
+                "hover:border-primary/40 active:scale-[0.98]",
+                "hover:-translate-y-0.5"
+            )}
         >
-            <CardContent className="p-5 flex flex-col h-full">
-                {/* Title & Source */}
+            {/* Subtle gradient overlay */}
+            <div className={cn(
+                "absolute inset-0 bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity duration-300",
+                gradientClass
+            )} />
+
+            <CardContent className="relative p-5 flex flex-col h-full">
+                {/* Title & Source with auto-sync indicator */}
                 <div className="flex justify-between items-start mb-3">
-                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider group-hover:text-foreground/70 transition-colors">
                         {metric.title}
                     </div>
-                    {SourceIcon && (
-                        <span title={sourceLabel} className="cursor-help">
-                            <SourceIcon className="w-3.5 h-3.5 text-muted-foreground/40" />
-                        </span>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                        {/* Auto-sync pulse indicator */}
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" title="Auto-syncing" />
+                        {SourceIcon && (
+                            <span title={sourceLabel} className="cursor-help opacity-40 group-hover:opacity-70 transition-opacity">
+                                <SourceIcon className="w-3.5 h-3.5" />
+                            </span>
+                        )}
+                    </div>
                 </div>
 
-                {/* Primary Number */}
+                {/* Primary Number with animated glow on hover */}
                 <div className="flex items-center gap-3 mb-3">
-                    <span className="text-4xl font-bold tracking-tight text-foreground">{metric.value}</span>
+                    <span className="text-4xl font-bold tracking-tight text-foreground group-hover:text-primary/90 transition-colors">
+                        {metric.value}
+                    </span>
                     <div className={cn(
-                        "flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide",
-                        metric.trendDirection === 'up' ? "text-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 dark:text-emerald-400" :
-                            metric.trendDirection === 'down' ? "text-red-700 bg-red-50 dark:bg-red-900/20 dark:text-red-400" :
-                                "text-muted-foreground bg-muted"
+                        "flex items-center text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide transition-all",
+                        metric.trendDirection === 'up'
+                            ? "text-emerald-600/90 bg-emerald-50 dark:bg-emerald-900/20 dark:text-emerald-400 group-hover:bg-emerald-100 dark:group-hover:bg-emerald-900/30"
+                            : metric.trendDirection === 'down'
+                                ? "text-red-700 bg-red-100 dark:bg-red-900/30 dark:text-red-400 group-hover:bg-red-200 dark:group-hover:bg-red-900/50"
+                                : "text-muted-foreground bg-muted group-hover:bg-muted/80"
                     )}>
                         {metric.trendDirection === 'up' && <ArrowUpRight className="w-3 h-3 mr-1" />}
                         {metric.trendDirection === 'down' && <ArrowDownRight className="w-3 h-3 mr-1" />}
@@ -71,13 +98,13 @@ function MetricCard({ metric, onClick }: { metric: DetailedMetric, onClick: () =
                 </div>
 
                 {/* Secondary Description */}
-                <p className="text-sm text-foreground/80 leading-snug mb-2 flex-grow">
+                <p className="text-sm text-foreground/70 leading-snug mb-2 flex-grow group-hover:text-foreground/80 transition-colors">
                     {metric.description}
                 </p>
 
                 {/* Optional Timestamp Subtext */}
                 {metric.subtext && (
-                    <div className="text-[10px] text-muted-foreground mt-auto pt-2 border-t font-medium">
+                    <div className="text-[10px] text-muted-foreground mt-auto pt-2 border-t font-medium group-hover:text-foreground/60 transition-colors">
                         {metric.subtext}
                     </div>
                 )}
@@ -201,6 +228,8 @@ export default function DashboardPage() {
         value: string | number;
     } | null>(null);
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+    const { hasEngineeringTeam, setHasEngineeringTeam } = useTeamMode();
+    const [usesSlack, setUsesSlack] = useState(true); // Default to true, update from localStorage
 
     // Onboarding State
     const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(true); // Default to true to prevent flash
@@ -209,31 +238,61 @@ export default function DashboardPage() {
         if (typeof window !== 'undefined') {
             const completed = localStorage.getItem('onboarding_complete') === 'true';
             setHasCompletedOnboarding(completed);
+
+            // Check Slack preference
+            const storedUsesSlack = localStorage.getItem('uses_slack');
+            if (storedUsesSlack !== null) {
+                setUsesSlack(storedUsesSlack === 'true');
+            }
         }
     }, []);
 
     const displayedMetrics = useMemo(() => {
         if (!viewModel) return [];
-        if (selectedRepo === 'All' || !viewModel.githubRawData) return viewModel.executive.metrics;
 
-        const { commits, prs, releases } = viewModel.githubRawData;
-        const filteredCommits = commits.filter((c: any) => c.repo === selectedRepo);
-        const filteredPRs = prs.filter((p: any) => p.repo === selectedRepo);
-        const filteredReleases = releases.filter((r: any) => r.repo === selectedRepo);
+        // Filter out 'shipped' (Releases to Users) and 'repo-updates' (Team Activity) metrics
+        let baseMetrics = viewModel.executive.metrics.filter(m => m.id !== 'shipped' && m.id !== 'repo-updates');
 
-        const commitsLast7dRaw = filteredCommits.filter((c: any) => differenceInDays(new Date(), parseISO(c.date)) <= 7);
-        // Active Dev Days = count of UNIQUE days with commits, not total commits
-        const activeDevDays = new Set(commitsLast7dRaw.map((c: any) => new Date(c.date).toDateString())).size;
-        const mergedLast7d = filteredPRs.filter((p: any) => p.merged && differenceInDays(new Date(), parseISO(p.merged_at)) <= 7).length;
-        const releasesLast7d = filteredReleases.filter((r: any) => differenceInDays(new Date(), parseISO(r.published_at)) <= 7).length;
+        // For non-engineering users, filter out engineering-focused metrics and show business metrics
+        if (!hasEngineeringTeam) {
+            // Remove engineering metrics
+            baseMetrics = baseMetrics.filter(m =>
+                !['commits', 'prs-merged', 'cycle-time', 'blocked-items', 'features-completed', 'eng-changes', 'repo-activity'].includes(m.id)
+            );
 
-        return viewModel.executive.metrics.map(m => {
-            if (m.id === 'repo-updates') return { ...m, value: activeDevDays, trendLabel: 'Filtered', subtext: selectedRepo };
-            if (m.id === 'eng-changes') return { ...m, value: mergedLast7d, trendLabel: 'Filtered' };
-            if (m.id === 'shipped') return { ...m, value: releasesLast7d, trendLabel: 'Filtered' };
-            return m;
-        });
-    }, [viewModel, selectedRepo]);
+            // Add/ensure Meetings metric
+            const meetingsMetric = {
+                id: 'meetings',
+                title: 'Meetings This Week',
+                value: viewModel.upcomingMeetings?.length || 0,
+                description: 'Scheduled meetings',
+                trendLabel: 'Calendar',
+                trendDirection: 'up' as const,
+                source: 'internal' as const
+            };
+
+            // Add/ensure Tasks metric
+            const tasksMetric = {
+                id: 'tasks',
+                title: 'Tasks Completed',
+                value: viewModel.momentum?.tasksCompleted || 0,
+                description: 'Work items done',
+                trendLabel: 'Productivity',
+                trendDirection: 'up' as const,
+                source: 'internal' as const
+            };
+
+            // Check if these metrics already exist, if not add them
+            if (!baseMetrics.find(m => m.id === 'meetings')) {
+                baseMetrics.unshift(meetingsMetric);
+            }
+            if (!baseMetrics.find(m => m.id === 'tasks')) {
+                baseMetrics.splice(1, 0, tasksMetric);
+            }
+        }
+
+        return baseMetrics;
+    }, [viewModel, hasEngineeringTeam]);
 
     // Dynamic Brief
     const filteredGithubData = useMemo(() => {
@@ -250,6 +309,23 @@ export default function DashboardPage() {
 
     // Dynamic Brief
     const currentBrief = useMemo(() => {
+        // If user doesn't have an engineering team, show non-engineering focused insights
+        if (!hasEngineeringTeam) {
+            const meetingsCount = viewModel?.upcomingMeetings?.length || 0;
+            const tasksCompleted = viewModel?.momentum?.tasksCompleted || 0;
+
+            let text = `This week, you've completed ${tasksCompleted} recorded task${tasksCompleted !== 1 ? 's' : ''}`;
+
+            if (meetingsCount > 0) {
+                text += ` and have ${meetingsCount} upcoming meeting${meetingsCount !== 1 ? 's' : ''}. `;
+            } else {
+                text += `. No upcoming meetings scheduled. `;
+            }
+
+            text += "Stay focused on your priorities and stakeholder engagement.";
+            return text;
+        }
+
         if (!viewModel?.githubRawData) return viewModel?.aiInsight;
 
         const { commits, prs, releases } = filteredGithubData;
@@ -285,7 +361,7 @@ export default function DashboardPage() {
         }
 
         return text;
-    }, [viewModel, selectedRepo, filteredGithubData]);
+    }, [viewModel, selectedRepo, filteredGithubData, hasEngineeringTeam]);
 
     const derivedMomentum = useMemo(() => {
         if (!viewModel) return null;
@@ -438,7 +514,8 @@ export default function DashboardPage() {
                         </NativeSelect>
                     </div>
 
-                    {viewModel.githubRepositories && viewModel.githubRepositories.length > 0 && (
+                    {/* Repository selector - only show when user has engineering team */}
+                    {hasEngineeringTeam && viewModel.githubRepositories && viewModel.githubRepositories.length > 0 && (
                         <div className="w-64">
                             <NativeSelect value={selectedRepo} onChange={(e) => setSelectedRepo(e.target.value)}>
                                 <option value="All">All Repositories</option>
@@ -458,6 +535,7 @@ export default function DashboardPage() {
                         <RefreshCw className={cn("w-3 h-3", syncing && "animate-spin")} />
                         {syncing ? 'Syncing...' : `Last synced: ${viewModel.attention?.lastSyncedText || 'Unknown'}`}
                     </button>
+                    {/* Report Button - Commented out for now
                     <Button
                         variant="outline"
                         size="sm"
@@ -467,11 +545,46 @@ export default function DashboardPage() {
                         <FileText className="w-4 h-4" />
                         Report
                     </Button>
+                    */}
+                    {/* Engineering Team Toggle */}
+                    <button
+                        onClick={() => setHasEngineeringTeam(!hasEngineeringTeam)}
+                        className={cn(
+                            "hidden md:flex items-center gap-3 px-4 py-2 text-sm font-medium rounded-lg border-2 transition-all duration-200",
+                            hasEngineeringTeam
+                                ? "bg-gradient-to-r from-violet-500/10 to-indigo-500/10 text-violet-700 dark:text-violet-300 border-violet-300 dark:border-violet-600 shadow-sm hover:shadow-md"
+                                : "bg-muted/50 text-muted-foreground border-transparent hover:bg-muted hover:border-border"
+                        )}
+                        title="Toggle engineering team features"
+                    >
+                        <div className={cn(
+                            "flex items-center justify-center w-7 h-7 rounded-full transition-colors",
+                            hasEngineeringTeam
+                                ? "bg-violet-500/20 text-violet-600 dark:text-violet-400"
+                                : "bg-muted-foreground/10 text-muted-foreground"
+                        )}>
+                            <Users className="w-4 h-4" />
+                        </div>
+                        <span className="font-semibold">Engineering Team</span>
+                        <div className={cn(
+                            "relative w-11 h-6 rounded-full transition-all duration-200 ml-1",
+                            hasEngineeringTeam
+                                ? "bg-gradient-to-r from-violet-500 to-indigo-500 shadow-inner"
+                                : "bg-muted-foreground/20"
+                        )}>
+                            <div className={cn(
+                                "absolute top-1 w-4 h-4 rounded-full bg-white shadow-md transition-all duration-200",
+                                hasEngineeringTeam
+                                    ? "left-6 shadow-violet-500/30"
+                                    : "left-1"
+                            )} />
+                        </div>
+                    </button>
                 </div>
             </div>
 
-            {/* Repository Context Banner */}
-            {viewModel.githubRawData && (
+            {/* Repository Context Banner - Only show when user has engineering team */}
+            {hasEngineeringTeam && viewModel.githubRawData && (
                 <RepositoryContextBanner
                     repository={selectedRepo}
                     repositoryDetails={viewModel.githubRepositories?.find(r => r.fullName === selectedRepo)}
@@ -487,8 +600,8 @@ export default function DashboardPage() {
                 </div>
                 <div className="space-y-2 flex-1">
                     <div className="flex items-center gap-3">
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 uppercase tracking-wide border border-emerald-200 dark:border-emerald-800">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-600/90 dark:bg-emerald-500/10 dark:text-emerald-400 uppercase tracking-wide border border-emerald-100 dark:border-emerald-900/50">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                             Healthy Progress
                         </span>
                         <span className="h-1 w-1 rounded-full bg-indigo-300 dark:bg-indigo-700" />
@@ -497,13 +610,57 @@ export default function DashboardPage() {
                     <p className="text-lg font-medium leading-relaxed text-foreground/90">
                         {currentBrief || viewModel.aiInsight}
                     </p>
+
+                    {/* Data Sources - Clean minimal indicator */}
                     <div className="pt-3 mt-3 border-t border-indigo-200/30 flex flex-wrap items-center gap-4 text-xs font-medium text-indigo-900/60 dark:text-indigo-200/60">
-                        <span className="flex items-center gap-1.5"><Layers className="w-3 h-3" /> Data from: Internal & Slack Check-ins</span>
-                        <span className="flex items-center gap-1.5"><Github className="w-3 h-3" /> GitHub Activity</span>
-                        <span className="flex items-center gap-1.5"><Mic className="w-3 h-3" /> Meeting Transcripts</span>
+                        <span className="flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Auto-syncing
+                        </span>
+                        <span className="flex items-center gap-1.5"><Layers className="w-3 h-3" /> Internal</span>
+                        {usesSlack && (
+                            <span className="flex items-center gap-1.5"><MessageSquare className="w-3 h-3" /> Slack</span>
+                        )}
+                        {hasEngineeringTeam && (
+                            <span className="flex items-center gap-1.5"><Github className="w-3 h-3" /> GitHub</span>
+                        )}
+                        <span className="flex items-center gap-1.5"><Mic className="w-3 h-3" /> Meetings</span>
+                        <span className="flex items-center gap-1.5"><Calendar className="w-3 h-3" /> Calendar</span>
                     </div>
                 </div>
             </div>
+
+            {/* Predictive Insight Card - The "Magic" unique insight */}
+            {(viewModel.attention?.blockedCount > 0 || viewModel.risks?.length > 0) && (
+                <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-red-500/10 border border-amber-400/30 rounded-2xl p-5 shadow-sm">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-amber-400/20 to-transparent rounded-full blur-2xl" />
+                    <div className="relative flex items-start gap-4">
+                        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shrink-0 shadow-lg text-white">
+                            <AlertTriangle className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-sm font-bold text-amber-700 dark:text-amber-300">AI Prediction</span>
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-200/50 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200 font-medium">
+                                    Needs Attention
+                                </span>
+                            </div>
+                            <p className="text-sm text-foreground/80 leading-relaxed">
+                                {viewModel.attention?.blockedCount > 0
+                                    ? `You have ${viewModel.attention.blockedCount} blocked item${viewModel.attention.blockedCount !== 1 ? 's' : ''} that may delay your timeline by 2-3 days if not addressed this week.`
+                                    : viewModel.risks?.[0]?.text || 'Some items need your attention to stay on track.'}
+                            </p>
+                            <button
+                                onClick={() => router.push('/todos')}
+                                className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 hover:underline"
+                            >
+                                View Blocked Items
+                                <ArrowUpRight className="w-3 h-3" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Meeting Prep Card - Priority for PMs */}
 
@@ -524,57 +681,180 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+            {/* Dashboard Grid - Adjusts based on engineering mode */}
+            <div className={cn(
+                "grid gap-8",
+                hasEngineeringTeam ? "grid-cols-1 xl:grid-cols-3" : "grid-cols-1 lg:grid-cols-2"
+            )}>
 
-                {/* 3. Team Momentum & Recent Activity (2/3) */}
-                <div className="xl:col-span-2 space-y-6">
-                    {/* Combined Team Intelligence Section */}
-                    <div className="space-y-4">
-                        <h2 className="text-lg font-bold flex items-center gap-2">
-                            <Activity className="w-5 h-5 text-muted-foreground" />
-                            Work Intelligence
-                        </h2>
-
-                        {/* Pass momentum data to the unified component */}
-                        <UnifiedIntelligence
-                            momentumData={momentumToDisplay}
-                        />
-                    </div>
-
-                    {/* Recent Activity */}
-                    <div className="space-y-6 pt-4">
-                        <div className="flex items-center justify-between">
+                {/* Main Content Area */}
+                <div className={cn(
+                    "space-y-6",
+                    hasEngineeringTeam ? "xl:col-span-2" : "lg:col-span-1"
+                )}>
+                    {/* Combined Team Intelligence Section - Only show for engineering users */}
+                    {hasEngineeringTeam && (
+                        <div className="space-y-4">
                             <h2 className="text-lg font-bold flex items-center gap-2">
                                 <Activity className="w-5 h-5 text-muted-foreground" />
-                                Recent Activity
-                                {selectedRepo !== 'All' && (
-                                    <span className="text-xs font-normal text-muted-foreground">
-                                        in {selectedRepo}
-                                    </span>
-                                )}
+                                Work Intelligence
                             </h2>
+
+                            {/* Pass momentum data to the unified component */}
+                            <UnifiedIntelligence
+                                momentumData={momentumToDisplay}
+                                selectedRepo={selectedRepo}
+                                showEngineering={hasEngineeringTeam}
+                            />
                         </div>
-                        <Card>
-                            <CardHeader className="pb-3">
-                                <CardTitle className="text-base font-medium">Last 7 days</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <RecentActivityFeed
-                                    githubData={filteredGithubData}
-                                    repository={selectedRepo}
-                                />
-                            </CardContent>
-                        </Card>
-                    </div>
+                    )}
+
+                    {/* Recent Activity - Only show when user has engineering team */}
+                    {hasEngineeringTeam && (
+                        <div className="space-y-6 pt-4">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-lg font-bold flex items-center gap-2">
+                                    <Activity className="w-5 h-5 text-muted-foreground" />
+                                    Recent Activity
+                                    {selectedRepo !== 'All' && (
+                                        <span className="text-xs font-normal text-muted-foreground">
+                                            in {selectedRepo}
+                                        </span>
+                                    )}
+                                </h2>
+                            </div>
+                            <Card>
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-base font-medium">Last 7 days</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <RecentActivityFeed
+                                        githubData={filteredGithubData}
+                                        repository={selectedRepo}
+                                    />
+                                </CardContent>
+                            </Card>
+                        </div>
+                    )}
+
+                    {/* Quick Actions - Show when NOT engineering mode */}
+                    {!hasEngineeringTeam && (
+                        <div className="space-y-4 pt-4">
+                            <h2 className="text-lg font-bold flex items-center gap-2">
+                                <Zap className="w-5 h-5 text-muted-foreground" />
+                                Quick Actions
+                            </h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <button
+                                    onClick={() => router.push('/todos')}
+                                    className="flex items-center gap-4 p-4 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-200/50 dark:border-blue-800/50 rounded-xl hover:shadow-md transition-all group text-left"
+                                >
+                                    <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-blue-500/20 text-blue-600 dark:text-blue-400">
+                                        <CheckCircle2 className="w-5 h-5" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="font-semibold group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Manage Tasks</div>
+                                        <div className="text-xs text-muted-foreground">Track and organize work</div>
+                                    </div>
+                                    <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-blue-600" />
+                                </button>
+
+                                <button
+                                    onClick={() => router.push('/meetings')}
+                                    className="flex items-center gap-4 p-4 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-200/50 dark:border-purple-800/50 rounded-xl hover:shadow-md transition-all group text-left"
+                                >
+                                    <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-purple-500/20 text-purple-600 dark:text-purple-400">
+                                        <Mic className="w-5 h-5" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="font-semibold group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">View Meetings</div>
+                                        <div className="text-xs text-muted-foreground">Review insights & notes</div>
+                                    </div>
+                                    <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-purple-600" />
+                                </button>
+
+                                <button
+                                    onClick={() => router.push('/stakeholders')}
+                                    className="flex items-center gap-4 p-4 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-200/50 dark:border-amber-800/50 rounded-xl hover:shadow-md transition-all group text-left"
+                                >
+                                    <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                                        <Users className="w-5 h-5" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="font-semibold group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">Stakeholders</div>
+                                        <div className="text-xs text-muted-foreground">Manage relationships</div>
+                                    </div>
+                                    <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-amber-600" />
+                                </button>
+
+                                <button
+                                    onClick={() => router.push('/questions')}
+                                    className="flex items-center gap-4 p-4 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-200/50 dark:border-emerald-800/50 rounded-xl hover:shadow-md transition-all group text-left"
+                                >
+                                    <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                                        <AlertCircle className="w-5 h-5" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="font-semibold group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">Team CheckIns</div>
+                                        <div className="text-xs text-muted-foreground">Stay connected</div>
+                                    </div>
+                                    <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-emerald-600" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Recent Meetings - Show for non-engineering users */}
+                    {!hasEngineeringTeam && viewModel.meetings && viewModel.meetings.length > 0 && (
+                        <div className="space-y-4 pt-6">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-lg font-bold flex items-center gap-2">
+                                    <Mic className="w-5 h-5 text-muted-foreground" />
+                                    Recent Meetings
+                                </h2>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-xs text-muted-foreground hover:text-foreground"
+                                    onClick={() => router.push('/meetings')}
+                                >
+                                    View All
+                                    <ArrowUpRight className="w-3 h-3 ml-1" />
+                                </Button>
+                            </div>
+                            <Card>
+                                <CardContent className="p-0 divide-y">
+                                    {viewModel.meetings.slice(0, 3).map((meeting, i) => (
+                                        <button
+                                            key={meeting.id || i}
+                                            className="w-full p-4 flex items-center gap-4 hover:bg-muted/50 transition-colors text-left"
+                                            onClick={() => router.push(`/meetings/${meeting.id}`)}
+                                        >
+                                            <div className={cn(
+                                                "flex items-center justify-center w-10 h-10 rounded-lg shrink-0",
+                                                i === 0 ? "bg-blue-500/10 text-blue-600" : "bg-muted text-muted-foreground"
+                                            )}>
+                                                <Calendar className="w-5 h-5" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="font-medium truncate">{meeting.title}</div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {meeting.startTime ? format(new Date(meeting.startTime), 'MMM d, h:mm a') : 'Date not set'}
+                                                </div>
+                                            </div>
+                                            <ArrowUpRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                                        </button>
+                                    ))}
+                                </CardContent>
+                            </Card>
+                        </div>
+                    )}
                 </div>
 
-                {/* 4. Risk & Attention (1/3) */}
+                {/* Sidebar Content */}
                 <div className="space-y-6">
-                    <div className="flex items-center justify-between">
-                    </div>
-
-                    {/* 5. Upcoming Calls */}
-                    <div className="space-y-6">
+                    {/* Upcoming Calls */}
+                    <div className="space-y-4">
                         <h2 className="text-lg font-bold flex items-center gap-2">
                             <Calendar className="w-5 h-5 text-muted-foreground" />
                             Upcoming Calls
@@ -586,114 +866,83 @@ export default function DashboardPage() {
                         </Card>
                     </div>
 
-                    {/* 6. Engineering Efficiency (Real Data) */}
-                    <div className="space-y-6 pt-4 border-t">
-                        <h2 className="text-lg font-bold flex items-center gap-2">
-                            <Zap className="w-5 h-5 text-muted-foreground" />
-                            Engineering Efficiency
-                        </h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Cycle Time Card */}
-                            <div
-                                className="p-5 bg-card border rounded-lg hover:shadow-sm transition-all cursor-pointer hover:border-blue-400 group"
-                                onClick={() => setExplanationMetric({
-                                    key: 'cycle-time',
-                                    title: 'Cycle Time',
-                                    value: momentumToDisplay.cycleTimeHours ? `${momentumToDisplay.cycleTimeHours}h` : 'N/A'
-                                })}
-                            >
-                                <div className="flex justify-between items-start mb-2">
-                                    <div className="text-sm font-medium text-muted-foreground group-hover:text-blue-600 transition-colors">Cycle Time</div>
-                                    <Clock className="w-4 h-4 text-muted-foreground/50 group-hover:text-blue-500" />
-                                </div>
-                                <div className="flex items-baseline gap-2 mb-3">
-                                    <span className="text-3xl font-bold tracking-tight">
-                                        {momentumToDisplay.cycleTimeHours ? `${momentumToDisplay.cycleTimeHours}h` : <span className="text-xl text-muted-foreground font-normal">N/A</span>}
-                                    </span>
-                                    {momentumToDisplay.cycleTimeHours ? (
-                                        <span className="text-xs text-muted-foreground font-medium">avg. to merge</span>
-                                    ) : (
-                                        <span className="text-xs text-muted-foreground/60">Need ~5 merged PRs</span>
-                                    )}
-                                </div>
-                                <div className="text-xs text-muted-foreground line-clamp-2">
-                                    Time from PR creation to merge. Lower is better.
-                                </div>
-                            </div>
-
-                            {/* Maker Time Card */}
-                            <div
-                                className="p-5 bg-card border rounded-lg hover:shadow-sm transition-all cursor-pointer hover:border-blue-400 group"
-                                onClick={() => setExplanationMetric({
-                                    key: 'meeting-load',
-                                    title: 'Meeting Load',
-                                    value: `${momentumToDisplay.meetingMakerRatio || 0}%`
-                                })}
-                            >
-                                <div className="flex justify-between items-start mb-2">
-                                    <div className="text-sm font-medium text-muted-foreground group-hover:text-blue-600 transition-colors">Meeting Load</div>
-                                    <Mic className="w-4 h-4 text-muted-foreground/50 group-hover:text-blue-500" />
-                                </div>
-                                <div className="flex items-baseline gap-2 mb-3">
-                                    <span className="text-3xl font-bold tracking-tight">
-                                        {momentumToDisplay.meetingMakerRatio || 0}%
-                                    </span>
-                                    <span className={cn(
-                                        "text-xs font-bold px-1.5 py-0.5 rounded uppercase",
-                                        (momentumToDisplay.meetingMakerRatio || 0) > 30 ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
-                                    )}>
-                                        {(momentumToDisplay.meetingMakerRatio || 0) > 30 ? "High" : "Healthy"}
-                                    </span>
-                                </div>
-                                <div className="w-full bg-muted h-1.5 rounded-full overflow-hidden mt-1">
-                                    <div
-                                        className={cn("h-full rounded-full",
-                                            (momentumToDisplay.meetingMakerRatio || 0) > 30 ? "bg-red-500" : "bg-emerald-500"
+                    {/* 6. Engineering Efficiency (Real Data) - Only show when user has engineering team */}
+                    {hasEngineeringTeam && (
+                        <div className="space-y-6 pt-4 border-t">
+                            <h2 className="text-lg font-bold flex items-center gap-2">
+                                <Zap className="w-5 h-5 text-muted-foreground" />
+                                Engineering Efficiency
+                            </h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {/* Cycle Time Card */}
+                                <div
+                                    className="p-5 bg-card border rounded-lg hover:shadow-sm transition-all cursor-pointer hover:border-blue-400 group"
+                                    onClick={() => setExplanationMetric({
+                                        key: 'cycle-time',
+                                        title: 'Cycle Time',
+                                        value: momentumToDisplay.cycleTimeHours ? `${momentumToDisplay.cycleTimeHours}h` : 'N/A'
+                                    })}
+                                >
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="text-sm font-medium text-muted-foreground group-hover:text-blue-600 transition-colors">Cycle Time</div>
+                                        <Clock className="w-4 h-4 text-muted-foreground/50 group-hover:text-blue-500" />
+                                    </div>
+                                    <div className="flex items-baseline gap-2 mb-3">
+                                        <span className="text-3xl font-bold tracking-tight">
+                                            {momentumToDisplay.cycleTimeHours ? `${momentumToDisplay.cycleTimeHours}h` : <span className="text-xl text-muted-foreground font-normal">N/A</span>}
+                                        </span>
+                                        {momentumToDisplay.cycleTimeHours ? (
+                                            <span className="text-xs text-muted-foreground font-medium">avg. to merge</span>
+                                        ) : (
+                                            <span className="text-xs text-muted-foreground/60">Need ~5 merged PRs</span>
                                         )}
-                                        style={{ width: `${momentumToDisplay.meetingMakerRatio || 0}%` }}
-                                    />
-                                </div>
-                                <div className="text-xs text-muted-foreground mt-2">
-                                    % of work week spent in meetings
-                                </div>
-                            </div>
-
-                            {/* Investment Profile Card */}
-                            <div className="p-5 bg-card border rounded-lg hover:shadow-sm transition-all md:col-span-2 lg:col-span-1 lg:col-start-1 xl:col-span-2 xl:col-start-1">
-                                <div className="flex justify-between items-start mb-4">
-                                    <div>
-                                        <div className="text-sm font-medium text-muted-foreground">Investment Allocation</div>
-                                        <div className="text-xs text-muted-foreground/80 mt-1">Where is the team spending their engineering bandwidth?</div>
                                     </div>
-                                    <Layers className="w-4 h-4 text-muted-foreground/50" />
+                                    <div className="text-xs text-muted-foreground line-clamp-2">
+                                        Time from PR creation to merge. Lower is better.
+                                    </div>
                                 </div>
 
-                                <div className="flex items-center gap-1 h-2 w-full rounded-full overflow-hidden mb-3">
-                                    <div style={{ width: `${momentumToDisplay.investmentDistribution?.features}%` }} className="h-full bg-emerald-500" title="New Features" />
-                                    <div style={{ width: `${momentumToDisplay.investmentDistribution?.bugs}%` }} className="h-full bg-amber-500" title="Bugs & Quality" />
-                                    <div style={{ width: `${momentumToDisplay.investmentDistribution?.techDebt}%` }} className="h-full bg-slate-400" title="Tech Debt & Maintenance" />
+                                {/* Maker Time Card */}
+                                <div
+                                    className="p-5 bg-card border rounded-lg hover:shadow-sm transition-all cursor-pointer hover:border-blue-400 group"
+                                    onClick={() => setExplanationMetric({
+                                        key: 'meeting-load',
+                                        title: 'Meeting Load',
+                                        value: `${momentumToDisplay.meetingMakerRatio || 0}%`
+                                    })}
+                                >
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="text-sm font-medium text-muted-foreground group-hover:text-blue-600 transition-colors">Meeting Load</div>
+                                        <Mic className="w-4 h-4 text-muted-foreground/50 group-hover:text-blue-500" />
+                                    </div>
+                                    <div className="flex items-baseline gap-2 mb-3">
+                                        <span className="text-3xl font-bold tracking-tight">
+                                            {momentumToDisplay.meetingMakerRatio || 0}%
+                                        </span>
+                                        <span className={cn(
+                                            "text-xs font-bold px-1.5 py-0.5 rounded uppercase",
+                                            (momentumToDisplay.meetingMakerRatio || 0) > 30 ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
+                                        )}>
+                                            {(momentumToDisplay.meetingMakerRatio || 0) > 30 ? "High" : "Healthy"}
+                                        </span>
+                                    </div>
+                                    <div className="w-full bg-muted h-1.5 rounded-full overflow-hidden mt-1">
+                                        <div
+                                            className={cn("h-full rounded-full",
+                                                (momentumToDisplay.meetingMakerRatio || 0) > 30 ? "bg-red-500" : "bg-emerald-500"
+                                            )}
+                                            style={{ width: `${momentumToDisplay.meetingMakerRatio || 0}%` }}
+                                        />
+                                    </div>
+                                    <div className="text-xs text-muted-foreground mt-2">
+                                        % of work week spent in meetings
+                                    </div>
                                 </div>
 
-                                <div className="flex justify-between items-center text-xs px-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                                        <span className="font-medium text-foreground">Features</span>
-                                        <span className="text-muted-foreground">{momentumToDisplay.investmentDistribution?.features || 0}%</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-2 h-2 rounded-full bg-amber-500" />
-                                        <span className="font-medium text-foreground">Quality</span>
-                                        <span className="text-muted-foreground">{momentumToDisplay.investmentDistribution?.bugs || 0}%</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-2 h-2 rounded-full bg-slate-400" />
-                                        <span className="font-medium text-foreground">Maintenance</span>
-                                        <span className="text-muted-foreground">{momentumToDisplay.investmentDistribution?.techDebt || 0}%</span>
-                                    </div>
-                                </div>
+
                             </div>
                         </div>
-                    </div>
+                    )}
 
                 </div>
 
@@ -714,17 +963,20 @@ export default function DashboardPage() {
                 githubData={filteredGithubData}
                 blockers={viewModel?.blockers || []} // Pass Blockers
                 meetings={viewModel?.meetings || []} // Pass Meetings (for decisions)
+                tasks={viewModel?.allTasks || []} // Pass all tasks for In Progress
             />
-            {explanationMetric && (
-                <MetricExplanationModal
-                    isOpen={!!explanationMetric}
-                    onClose={() => setExplanationMetric(null)}
-                    title={explanationMetric.title}
-                    metricKey={explanationMetric.key}
-                    value={explanationMetric.value}
-                    description="Breakdown of this calculation."
-                />
-            )}
+            {
+                explanationMetric && (
+                    <MetricExplanationModal
+                        isOpen={!!explanationMetric}
+                        onClose={() => setExplanationMetric(null)}
+                        title={explanationMetric.title}
+                        metricKey={explanationMetric.key}
+                        value={explanationMetric.value}
+                        description="Breakdown of this calculation."
+                    />
+                )
+            }
             <ReportGenerationModal
                 isOpen={isReportModalOpen}
                 onClose={() => setIsReportModalOpen(false)}
@@ -732,23 +984,25 @@ export default function DashboardPage() {
             />
 
             {/* Onboarding Overlay */}
-            {!hasCompletedOnboarding && (
-                <OnboardingOverlay
-                    onComplete={() => {
-                        setHasCompletedOnboarding(true);
-                        localStorage.setItem('onboarding_complete', 'true');
-                    }}
-                    onConnectGithub={async () => {
-                        // In real app: Trigger NextAuth GitHub flow or link account
-                        await new Promise(r => setTimeout(r, 2000));
-                        setSelectedRepo('All');
-                    }}
-                    onConnectCalendar={async () => {
-                        // In real app: Trigger Google Calendar flow
-                        await new Promise(r => setTimeout(r, 2000));
-                    }}
-                />
-            )}
-        </div>
+            {
+                !hasCompletedOnboarding && (
+                    <OnboardingOverlay
+                        onComplete={() => {
+                            setHasCompletedOnboarding(true);
+                            localStorage.setItem('onboarding_complete', 'true');
+                        }}
+                        onConnectGithub={async () => {
+                            // In real app: Trigger NextAuth GitHub flow or link account
+                            await new Promise(r => setTimeout(r, 2000));
+                            setSelectedRepo('All');
+                        }}
+                        onConnectCalendar={async () => {
+                            // In real app: Trigger Google Calendar flow
+                            await new Promise(r => setTimeout(r, 2000));
+                        }}
+                    />
+                )
+            }
+        </div >
     );
 }

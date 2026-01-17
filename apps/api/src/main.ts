@@ -2,9 +2,16 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import * as express from 'express';
 
 async function bootstrap() {
-    const app = await NestFactory.create(AppModule);
+    const app = await NestFactory.create(AppModule, {
+        // Enable raw body for Stripe webhook verification
+        rawBody: true,
+    });
+
+    // Raw body middleware for Stripe webhooks
+    app.use('/stripe/webhook', express.raw({ type: 'application/json' }));
 
     app.enableCors({
         origin: [
@@ -15,7 +22,10 @@ async function bootstrap() {
             'http://127.0.0.1:3002',
             // Allow ngrok/tunnel origins if user uses them
             /^https:\/\/.*\.ngrok-free\.app$/,
-            /^https:\/\/.*\.ngrok\.io$/
+            /^https:\/\/.*\.ngrok\.io$/,
+            // Production domains
+            /^https:\/\/.*\.centri\.ai$/,
+            /^https:\/\/.*\.vercel\.app$/,
         ],
         credentials: true,
     });
@@ -30,7 +40,8 @@ async function bootstrap() {
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api', app, document);
 
-    await app.listen(3001);
-    console.log('API is running on http://localhost:3001');
+    const port = process.env.PORT || 3001;
+    await app.listen(port);
+    console.log(`API is running on http://localhost:${port}`);
 }
 bootstrap();

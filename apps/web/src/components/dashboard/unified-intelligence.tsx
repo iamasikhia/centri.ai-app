@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
     Brain, MessageSquare, GitBranch, Users, CheckCircle2,
     AlertTriangle, RefreshCw, Sparkles, Mic, GitMerge, GitPullRequest,
-    TrendingUp, Calendar, Activity
+    TrendingUp, Calendar, Activity, GitCommit
 } from "lucide-react";
 
 interface MomentumData {
@@ -23,6 +23,11 @@ interface UnifiedIntelligenceData {
         meetingsThisWeek: number;
         decisionsCount: number;
         teamResponsesCount: number;
+        blockersCount?: number;
+        commitsCount?: number;
+        mergedPrsCount?: number;
+        activeReposCount?: number;
+        contributorsCount?: number;
         githubActivity: any;
         crossReferenceCount: number;
     };
@@ -35,16 +40,21 @@ interface UnifiedIntelligenceData {
 
 interface Props {
     momentumData?: MomentumData;
+    selectedRepo?: string;
+    showEngineering?: boolean;
 }
 
-export default function UnifiedIntelligence({ momentumData }: Props) {
+export default function UnifiedIntelligence({ momentumData, selectedRepo, showEngineering = true }: Props) {
     const [data, setData] = useState<UnifiedIntelligenceData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-    const CACHE_KEY = 'work_intelligence_cache';
-    const CACHE_TIME_KEY = 'work_intelligence_cache_time';
+
+    // Create cache keys based on selected repo to ensure isolation
+    const repoKey = selectedRepo && selectedRepo !== 'All' ? selectedRepo : 'all';
+    const CACHE_KEY = `work_intelligence_cache_${repoKey}`;
+    const CACHE_TIME_KEY = `work_intelligence_cache_time_${repoKey}`;
     const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
     const fetchIntelligence = async (forceRefresh = false) => {
@@ -63,7 +73,8 @@ export default function UnifiedIntelligence({ momentumData }: Props) {
                     setLoading(false);
 
                     // Fetch fresh data in background (stale-while-revalidate)
-                    fetch(`${API_URL}/dashboard/intelligence`, {
+                    const query = selectedRepo && selectedRepo !== 'All' ? `?repo=${encodeURIComponent(selectedRepo)}` : '';
+                    fetch(`${API_URL}/dashboard/intelligence${query}`, {
                         headers: { 'x-user-id': 'default-user-id' }
                     })
                         .then(res => res.ok ? res.json() : null)
@@ -82,7 +93,8 @@ export default function UnifiedIntelligence({ momentumData }: Props) {
 
         setLoading(true);
         try {
-            const res = await fetch(`${API_URL}/dashboard/intelligence`, {
+            const query = selectedRepo && selectedRepo !== 'All' ? `?repo=${encodeURIComponent(selectedRepo)}` : '';
+            const res = await fetch(`${API_URL}/dashboard/intelligence${query}`, {
                 headers: { 'x-user-id': 'default-user-id' }
             });
             if (res.ok) {
@@ -107,23 +119,24 @@ export default function UnifiedIntelligence({ momentumData }: Props) {
 
     useEffect(() => {
         fetchIntelligence();
-    }, []);
+    }, [selectedRepo]);
+
 
     if (loading) {
         return (
             <Card className="overflow-hidden border-primary/20">
-                <CardContent className="p-0">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border/50">
-                        {[...Array(8)].map((_, i) => (
-                            <div key={i} className="bg-card p-4 space-y-2">
-                                <div className="flex items-center gap-2">
-                                    <Skeleton className="h-4 w-4 rounded" />
-                                    <Skeleton className="h-3 w-16" />
-                                </div>
-                                <Skeleton className="h-8 w-14" />
-                                <Skeleton className="h-3 w-20" />
+                <CardContent className="p-6">
+                    <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                        <div className="relative">
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500/20 to-violet-500/20 flex items-center justify-center">
+                                <Brain className="w-6 h-6 text-indigo-500 animate-pulse" />
                             </div>
-                        ))}
+                            <div className="absolute inset-0 rounded-full border-2 border-indigo-500/30 animate-ping" />
+                        </div>
+                        <div className="text-center space-y-1">
+                            <p className="text-sm font-medium text-muted-foreground">Analyzing your work data...</p>
+                            <p className="text-xs text-muted-foreground/60">Pulling from meetings, tasks & integrations</p>
+                        </div>
                     </div>
                 </CardContent>
             </Card>
@@ -136,8 +149,8 @@ export default function UnifiedIntelligence({ momentumData }: Props) {
     return (
         <Card className="overflow-hidden border-primary/20">
             <CardContent className="p-0">
-                {/* Main Stats Grid - 4 key metrics */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border/50">
+                {/* Main Stats Grid - key metrics */}
+                <div className={`grid ${showEngineering ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2'} gap-px bg-border/50`}>
                     {/* Momentum Stats */}
                     <StatCell
                         icon={<Mic className="w-4 h-4 text-blue-500" />}
@@ -151,18 +164,22 @@ export default function UnifiedIntelligence({ momentumData }: Props) {
                         value={momentumData?.tasksCompleted ?? 0}
                         source="Internal"
                     />
-                    <StatCell
-                        icon={<GitPullRequest className="w-4 h-4 text-amber-500" />}
-                        label="Reviews"
-                        value={momentumData?.reviewsPending ?? 0}
-                        source="GitHub"
-                    />
-                    <StatCell
-                        icon={<MessageSquare className="w-4 h-4 text-indigo-500" />}
-                        label="Decisions"
-                        value={data?.summary.decisionsCount ?? 0}
-                        source="Meetings"
-                    />
+                    {showEngineering && (
+                        <>
+                            <StatCell
+                                icon={<GitCommit className="w-4 h-4 text-purple-500" />}
+                                label="Commits"
+                                value={data?.summary.commitsCount ?? 0}
+                                source="GitHub"
+                            />
+                            <StatCell
+                                icon={<GitMerge className="w-4 h-4 text-indigo-500" />}
+                                label="PRs Merged"
+                                value={data?.summary.mergedPrsCount ?? 0}
+                                source="GitHub"
+                            />
+                        </>
+                    )}
                 </div>
 
 

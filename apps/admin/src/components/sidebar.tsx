@@ -16,7 +16,9 @@ import {
     Sun,
     MessageCircle,
     ClipboardCheck,
-    BarChart3
+    BarChart3,
+    MessageSquarePlus,
+    Puzzle
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from './ui/button';
@@ -27,6 +29,8 @@ const navigation = [
     { name: 'User Insights', href: '/user-insights', icon: BarChart3 },
     { name: 'Organizations', href: '/organizations', icon: Building2 },
     { name: 'Onboarding Insights', href: '/onboarding-insights', icon: ClipboardCheck },
+    { name: 'User Feedback', href: '/feedback', icon: MessageSquarePlus },
+    { name: 'Integration Requests', href: '/integration-requests', icon: Puzzle },
     { name: 'Integrations', href: '/integrations', icon: Activity },
     { name: 'Ask AI', href: '/chat', icon: MessageCircle },
 ];
@@ -36,7 +40,7 @@ export function Sidebar() {
     const { theme, setTheme } = useTheme();
 
     return (
-        <div className="flex h-screen w-64 flex-col border-r bg-card">
+        <div className="flex h-screen w-64 flex-col border-r bg-muted/10">
             {/* Logo */}
             <div className="flex h-16 items-center gap-2 border-b px-6">
                 <img
