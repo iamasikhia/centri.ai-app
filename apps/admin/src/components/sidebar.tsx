@@ -20,7 +20,8 @@ import {
     BarChart3,
     MessageSquarePlus,
     Puzzle,
-    DollarSign
+    DollarSign,
+    ToggleLeft
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from './ui/button';
@@ -36,6 +37,7 @@ const navigation = [
     
     // Tier 3: Operations (Product Functionality)
     { name: 'Integrations', href: '/integrations', icon: Activity },
+    { name: 'Feature Control', href: '/features', icon: ToggleLeft },
     
     // Tier 4: Support & Growth (User Engagement)
     { name: 'User Feedback', href: '/feedback', icon: MessageSquarePlus },
