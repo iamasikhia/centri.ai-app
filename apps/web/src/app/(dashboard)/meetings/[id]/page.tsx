@@ -6,6 +6,7 @@ import { MeetingSummary } from '@/components/meetings/meeting-summary';
 import { MeetingDecisions } from '@/components/meetings/meeting-decisions';
 import { MeetingActionItems } from '@/components/meetings/meeting-action-items';
 import { TranscriptViewer } from '@/components/meetings/transcript-viewer';
+import { SpeakerInvolvementCard } from '@/components/meetings/speaker-involvement';
 import { Meeting } from '@/types/meeting';
 import { format } from 'date-fns';
 import { ArrowLeft, Calendar, Users, FileText, Share2, MoreHorizontal, ExternalLink, RefreshCw } from 'lucide-react';
@@ -72,6 +73,7 @@ export default function MeetingDetailPage({ params }: { params: { id: string } }
                         }),
                         followUps: [],
                         documents: [],
+                        speakerInvolvement: m.speakerInvolvementJson ? JSON.parse(m.speakerInvolvementJson) : undefined,
                         transcript: m.transcriptJson
                             ? JSON.parse(m.transcriptJson).map((t: any) => ({
                                 speaker: t.speaker || 'Unknown',
@@ -275,14 +277,27 @@ export default function MeetingDetailPage({ params }: { params: { id: string } }
                     )}
                 </div>
 
-                {/* 2. Executive Summary */}
+                {/* 2. Speaker Involvement */}
+                {meeting.speakerInvolvement && meeting.speakerInvolvement.length > 0 && (
+                    <>
+                        <section>
+                            <SpeakerInvolvementCard 
+                                involvement={meeting.speakerInvolvement} 
+                                meetingDurationMinutes={meeting.durationMinutes}
+                            />
+                        </section>
+                        <hr className="border-border/50" />
+                    </>
+                )}
+
+                {/* 3. Executive Summary */}
                 <section>
                     <MeetingSummary summary={meeting.summary} takeaways={meeting.keyTakeaways} />
                 </section>
 
                 <hr className="border-border/50" />
 
-                {/* 3. Decisions & Actions Grid */}
+                {/* 4. Decisions & Actions Grid */}
                 <div className="grid md:grid-cols-2 gap-8 md:gap-12">
                     <section>
                         <MeetingDecisions decisions={meeting.decisions} />
@@ -312,14 +327,14 @@ export default function MeetingDetailPage({ params }: { params: { id: string } }
                     )}
                 </div>
 
-                {/* 4. Action Items (Full Width) */}
+                {/* 5. Action Items (Full Width) */}
                 <section>
                     <MeetingActionItems actions={meeting.actionItems} />
                 </section>
 
                 <hr className="border-border/50" />
 
-                {/* 5. Transcript */}
+                {/* 6. Transcript */}
                 <section>
                     <TranscriptViewer transcript={meeting.transcript} />
                 </section>

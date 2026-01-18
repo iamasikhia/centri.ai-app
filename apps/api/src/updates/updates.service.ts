@@ -90,8 +90,11 @@ export class UpdatesService {
 
             const stakeholderUpdates = await this.collectStakeholders(userId);
             updates.push(...stakeholderUpdates);
+
+            const actionItemUpdates = await this.collectOverdueActionItems(userId);
+            updates.push(...actionItemUpdates);
         } catch (e) {
-            console.error('Task/Stakeholder collect error', e);
+            console.error('Task/Stakeholder/ActionItem collect error', e);
         }
 
         // Email Notification Logic
@@ -593,6 +596,90 @@ export class UpdatesService {
             }
         } catch (e) {
             console.error('Stakeholder collect error', e);
+        }
+        return items;
+    }
+
+    private async collectOverdueActionItems(userId: string): Promise<any[]> {
+        const items = [];
+        try {
+            const now = new Date();
+            const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+            // Get all meetings with action items
+            const meetings = await this.prisma.meeting.findMany({
+                where: {
+                    userId,
+                    actionItemsJson: { not: null }
+                },
+                select: {
+                    id: true,
+                    title: true,
+                    startTime: true,
+                    actionItemsJson: true
+                }
+            });
+
+            for (const meeting of meetings) {
+                if (!meeting.actionItemsJson) continue;
+
+                try {
+                    const actionItems = JSON.parse(meeting.actionItemsJson as string);
+                    if (!Array.isArray(actionItems)) continue;
+
+                    for (const item of actionItems) {
+                        // Skip if no due date
+                        if (!item.dueDate) continue;
+
+                        const dueDate = new Date(item.dueDate);
+                        
+                        // Only notify if overdue (past due date)
+                        if (dueDate < now) {
+                            const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+                            const hoursOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60));
+
+                            // Determine severity based on how overdue
+                            let severity = 'important';
+                            if (daysOverdue >= 3) {
+                                severity = 'urgent';
+                            }
+
+                            const itemId = item.id || `${meeting.id}_${item.description?.substring(0, 20)?.replace(/\s/g, '_')}`;
+                            const externalId = `action_item_${itemId}_${dueDate.toISOString().split('T')[0]}`;
+
+                            items.push({
+                                userId,
+                                source: 'meetings',
+                                type: 'action_item_overdue',
+                                severity,
+                                title: `Overdue Action Item: ${item.description || 'Untitled'}`,
+                                body: item.owner && item.owner !== 'Unknown' 
+                                    ? `Owner: ${item.owner}. ${daysOverdue > 0 ? `${daysOverdue} day(s)` : `${hoursOverdue} hour(s)`} overdue.`
+                                    : `${daysOverdue > 0 ? `${daysOverdue} day(s)` : `${hoursOverdue} hour(s)`} overdue.`,
+                                occurredAt: new Date(),
+                                externalId,
+                                url: `/meetings/${meeting.id}`,
+                                metadata: {
+                                    meetingId: meeting.id,
+                                    meetingTitle: meeting.title,
+                                    actionItem: {
+                                        id: itemId,
+                                        description: item.description,
+                                        owner: item.owner,
+                                        priority: item.priority,
+                                        dueDate: item.dueDate
+                                    }
+                                }
+                            });
+                        }
+                    }
+                } catch (parseError) {
+                    console.error(`Failed to parse action items for meeting ${meeting.id}:`, parseError);
+                    continue;
+                }
+            }
+        } catch (e) {
+            console.error('Overdue action items collect error', e);
         }
         return items;
     }

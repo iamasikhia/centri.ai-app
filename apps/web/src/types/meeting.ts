@@ -49,6 +49,14 @@ export interface TranscriptSegment {
     isHighlighted?: boolean;
 }
 
+export interface SpeakerInvolvement {
+    name: string;
+    speakCount: number;
+    wordCount: number;
+    durationSeconds: number;
+    topics?: string[];
+}
+
 export interface Meeting {
     id: string;
     title: string;
@@ -66,6 +74,7 @@ export interface Meeting {
     actionItems: ActionItem[];
     followUps: FollowUp[];
     documents: DocumentReference[];
+    speakerInvolvement?: SpeakerInvolvement[];
 
     transcript: TranscriptSegment[];
 }

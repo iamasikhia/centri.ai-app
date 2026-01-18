@@ -127,8 +127,24 @@ export class ChatService {
 
     async processQuery(userId: string, query: string, conversationId?: string): Promise<ChatResponse & { conversationId: string }> {
         try {
-            if (!this.openai) {
-                throw new Error('OpenAI API not configured');
+            // Check user's preferred model
+            let user = await this.prisma.user.findUnique({
+                where: { email: userId },
+                select: { chatModel: true },
+            });
+            if (!user) {
+                user = await this.prisma.user.findUnique({
+                    where: { id: userId },
+                    select: { chatModel: true },
+                });
+            }
+            const preferredModel = (user?.chatModel || 'openai') as 'openai' | 'claude';
+            
+            // Validate that the selected model is configured
+            if (preferredModel === 'claude' && !this.anthropic) {
+                throw new Error('Claude API not configured. Please check ANTHROPIC_API_KEY in environment variables.');
+            } else if (preferredModel === 'openai' && !this.openai) {
+                throw new Error('OpenAI API not configured. Please check OPENAI_API_KEY in environment variables.');
             }
 
             // 1. Resolve Conversation ID
@@ -200,10 +216,13 @@ export class ChatService {
             return { ...response, conversationId: currentConversationId };
 
         } catch (e) {
-            this.logger.error(`Error processing query`, e);
+            this.logger.error(`Error processing query for user ${userId}:`, e);
+            const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+            this.logger.error(`Error details: ${errorMessage}`, e instanceof Error ? e.stack : '');
+            
             return {
                 conversationId: conversationId || 'error',
-                answer: "I encountered an error processing your request. Please try again.",
+                answer: `I encountered an error processing your request: ${errorMessage}. Please try again or contact support.`,
                 citations: [],
                 insights: [],
                 actions: [],
@@ -420,10 +439,10 @@ If the 'REAL DATA' object is empty or missing the requested info, explicitly sta
                 // Use Claude
                 const messages = [
                     ...history.map(msg => ({
-                        role: msg.role === 'assistant' ? 'assistant' : 'user' as const,
+                        role: (msg.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
                         content: msg.content
                     })),
-                    { role: 'user' as const, content: userPrompt }
+                    { role: 'user' as 'user' | 'assistant', content: userPrompt }
                 ];
 
                 const response = await this.anthropic.messages.create({

@@ -55,6 +55,9 @@ export class MeetingAnalysisService {
             analysis = this.mockAnalyze(meeting.transcript);
         }
 
+        // Extract speaker involvement from transcript
+        const speakerInvolvement = this.extractSpeakerInvolvement(meeting.transcript, meeting.transcriptJson);
+
         // Update Meeting with AI results
         await this.prisma.meeting.update({
             where: { id: meeting.id },
@@ -64,6 +67,7 @@ export class MeetingAnalysisService {
                 actionItemsJson: JSON.stringify(analysis.actionItems || []),
                 decisionsJson: JSON.stringify(analysis.decisions || []),
                 blockersJson: JSON.stringify(analysis.blockers || []),
+                speakerInvolvementJson: speakerInvolvement ? JSON.stringify(speakerInvolvement) : null,
                 processingStatus: 'processed'
             }
         });
@@ -101,6 +105,107 @@ Output EXCLUSIVELY strictly valid JSON.
         content = content.replace(/```json\n?|```/g, '').trim();
 
         return JSON.parse(content);
+    }
+
+    private extractSpeakerInvolvement(transcript?: string | null, transcriptJson?: string | null): any[] | null {
+        try {
+            // First try to parse transcriptJson if available (structured format)
+            if (transcriptJson) {
+                try {
+                    const parsed = typeof transcriptJson === 'string' ? JSON.parse(transcriptJson) : transcriptJson;
+                    if (Array.isArray(parsed)) {
+                        // Transcript is array of segments with speaker info
+                        const speakerStats = new Map<string, { speakCount: number; wordCount: number; durationSeconds: number; topics: Set<string> }>();
+
+                        for (const segment of parsed) {
+                            if (segment.speaker || segment.name) {
+                                const speakerName = segment.speaker || segment.name || 'Unknown';
+                                const text = segment.text || segment.content || '';
+                                const words = text.split(/\s+/).filter(w => w.length > 0);
+                                const duration = segment.duration || segment.durationSeconds || (segment.endTime - segment.startTime) || 0;
+
+                                if (!speakerStats.has(speakerName)) {
+                                    speakerStats.set(speakerName, {
+                                        speakCount: 0,
+                                        wordCount: 0,
+                                        durationSeconds: 0,
+                                        topics: new Set()
+                                    });
+                                }
+
+                                const stats = speakerStats.get(speakerName)!;
+                                stats.speakCount++;
+                                stats.wordCount += words.length;
+                                stats.durationSeconds += duration;
+
+                                // Try to extract topics from segment (simple keyword detection)
+                                const topicKeywords = ['decision', 'action', 'blocker', 'issue', 'feature', 'bug', 'priority', 'deadline'];
+                                for (const keyword of topicKeywords) {
+                                    if (text.toLowerCase().includes(keyword)) {
+                                        stats.topics.add(keyword);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (speakerStats.size > 0) {
+                            return Array.from(speakerStats.entries()).map(([name, stats]) => ({
+                                name,
+                                speakCount: stats.speakCount,
+                                wordCount: stats.wordCount,
+                                durationSeconds: Math.round(stats.durationSeconds),
+                                topics: Array.from(stats.topics)
+                            })).sort((a, b) => b.wordCount - a.wordCount); // Sort by contribution
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Failed to parse transcriptJson:', e);
+                }
+            }
+
+            // Fallback: Parse from raw transcript text
+            if (transcript) {
+                // Try to detect speaker patterns in transcript
+                // Common patterns: "Speaker Name:", "[Speaker Name]", "Name:"
+                const speakerPattern = /^(?:\[?([A-Z][a-zA-Z\s]+)\]?[:\-]\s*|([A-Z][a-zA-Z\s]+):\s*)/gm;
+                const speakerStats = new Map<string, { speakCount: number; wordCount: number }>();
+
+                const lines = transcript.split('\n');
+                let currentSpeaker = 'Unknown';
+
+                for (const line of lines) {
+                    const match = line.match(speakerPattern);
+                    if (match) {
+                        currentSpeaker = (match[1] || match[2] || 'Unknown').trim();
+                    }
+
+                    if (currentSpeaker && line.trim().length > 0) {
+                        if (!speakerStats.has(currentSpeaker)) {
+                            speakerStats.set(currentSpeaker, { speakCount: 0, wordCount: 0 });
+                        }
+
+                        const stats = speakerStats.get(currentSpeaker)!;
+                        stats.speakCount++;
+                        stats.wordCount += line.split(/\s+/).filter(w => w.length > 0).length;
+                    }
+                }
+
+                if (speakerStats.size > 0) {
+                    return Array.from(speakerStats.entries()).map(([name, stats]) => ({
+                        name,
+                        speakCount: stats.speakCount,
+                        wordCount: stats.wordCount,
+                        durationSeconds: 0, // Can't calculate from plain text
+                        topics: []
+                    })).sort((a, b) => b.wordCount - a.wordCount);
+                }
+            }
+
+            return null;
+        } catch (e) {
+            console.error('Error extracting speaker involvement:', e);
+            return null;
+        }
     }
 
     private mockAnalyze(transcript: string) {
