@@ -64,7 +64,9 @@ export function Sidebar() {
                 if (res.data && Array.isArray(res.data)) {
                     const flags: Record<string, boolean> = {};
                     res.data.forEach((flag: any) => {
-                        flags[flag.key] = flag.enabled;
+                        // Handle both formats: 'dashboard' and 'feature-dashboard'
+                        const key = flag.key.startsWith('feature-') ? flag.key : `feature-${flag.key}`;
+                        flags[key] = flag.enabled;
                     });
                     setFeatureFlags(flags);
                 }
