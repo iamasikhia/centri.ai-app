@@ -61,77 +61,44 @@ export default function FundraisingPage() {
 
     const handleDeepSearch = async () => {
         setIsSearching(true);
-        // Simulate web scanning
-        await new Promise(resolve => setTimeout(resolve, 2500));
-
-        // Mock "Found" items
-        const newItems: FundingOpportunity[] = [
-            {
-                id: 'deep-search-1',
-                name: 'Falcon Foundation',
-                type: 'Grant',
-                amount: '$5M Grant Pool',
-                description: 'Open source AI grants for the Middle East and Global South.',
-                fullDescription: 'Discovered via Deep Search. Focused on democratizing AI access.',
-                whatItOffers: ['Equity-free grants', 'Compute resources'],
-                criteria: ['Open Source', 'AI'],
-                stage: ['Seed', 'Growth'],
-                location: 'Abu Dhabi / Global',
-                deadline: 'Rolling',
-                website: 'https://www.tii.ae',
-                tags: ['AI', 'Middle East', 'Grant'],
-                aiInsight: 'Found this emerging opportunity in the Middle East region matching your AI keywords.'
-            },
-            {
-                id: 'deep-search-2',
-                name: 'Station F',
-                type: 'Startup Program',
-                amount: 'Incubation',
-                description: 'World\'s largest startup campus in Paris.',
-                fullDescription: 'Discovered via Deep Search from European tech news.',
-                whatItOffers: ['Office space', 'VC access', 'Perks'],
-                criteria: ['Based in Paris', 'Scalable'],
-                stage: ['Pre-Seed', 'Seed'],
-                location: 'Paris, France',
-                deadline: '2026-06-01T00:00:00Z',
-                website: 'https://stationf.co',
-                tags: ['Europe', 'Campus'],
-                aiInsight: 'The central hub for the European ecosystem. Great for networking.'
-            },
-            {
-                id: 'deep-search-3',
-                name: '100X.VC',
-                type: 'Venture Capital',
-                amount: '$150k (₹1.25 Cr)',
-                description: 'First cheque VC for India.',
-                fullDescription: 'Discovered via Deep Search. India\'s first fund to invest in early stage startups using iSAFE.',
-                whatItOffers: ['First cheque', 'Masterclass', 'Pitch day'],
-                criteria: ['India-based or Indian founders', 'Scalable'],
-                stage: ['Seed'],
-                location: 'Mumbai, India',
-                deadline: 'Rolling',
-                website: 'https://www.100x.vc',
-                tags: ['India', 'VC', 'Seed'],
-                aiInsight: 'Top choice for Indian founders looking for speed of execution.'
-            }
-        ];
-
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+        
         try {
-            const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/fundraising/save-deep-search`,
-                { opportunities: newItems },
-                { headers: { 'x-user-id': 'default-user-id' } }
-            );
-            // persistence successful: add to saved state so they stick around
-            if (res.data) {
-                setSavedOpps(prev => [...prev, ...res.data]);
+            const res = await fetch(`${API_URL}/opportunities?search=deep`, {
+                headers: { 'x-user-id': 'default-user-id' }
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                const newItems: FundingOpportunity[] = (data.items || []).map((opp: any) => ({
+                    id: opp.id || `opp-${Date.now()}`,
+                    name: opp.name,
+                    type: opp.type,
+                    amount: opp.amount,
+                    description: opp.description,
+                    fullDescription: opp.fullDescription,
+                    whatItOffers: opp.whatItOffers || [],
+                    criteria: opp.criteria || [],
+                    stage: opp.stage || [],
+                    location: opp.location,
+                    deadline: opp.deadline,
+                    website: opp.website,
+                    tags: opp.tags || [],
+                    aiInsight: opp.aiInsight,
+                    source: opp.source || 'Deep Search'
+                }));
+                
+                if (newItems.length > 0) {
+                    setOpportunities([...opportunities, ...newItems]);
+                }
+            } else {
+                console.error('Deep search failed - API endpoint not available yet');
             }
-        } catch (e) {
-            console.error("Failed to save deep search results", e);
-            // Fallback: Show as temporary session results if save fails
-            setDeepSearchResults(newItems);
+        } catch (err) {
+            console.error('Deep search error:', err);
+        } finally {
+            setIsSearching(false);
         }
-
-        setIsSearching(false);
     };
 
     // Filter Logic: User items first, then Saved, then Deep Search (session), then Standard

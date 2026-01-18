@@ -118,7 +118,7 @@ export default function UserInsightsPage() {
             </div>
 
             {/* Active Users KPIs */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Card>
                     <CardContent className="p-6">
                         <div className="flex items-center gap-3">
@@ -128,7 +128,7 @@ export default function UserInsightsPage() {
                             <div>
                                 <p className="text-sm text-muted-foreground">Daily Active Users</p>
                                 <p className="text-2xl font-bold">{stats?.dau || 0}</p>
-                                <p className="text-xs text-muted-foreground">{stats?.dauPercentage || 0}% of total</p>
+                                <p className="text-xs text-muted-foreground">{stats?.dauPercentage || 0}% of total users</p>
                             </div>
                         </div>
                     </CardContent>
@@ -143,7 +143,7 @@ export default function UserInsightsPage() {
                             <div>
                                 <p className="text-sm text-muted-foreground">Weekly Active Users</p>
                                 <p className="text-2xl font-bold">{stats?.wau || 0}</p>
-                                <p className="text-xs text-muted-foreground">{stats?.wauPercentage || 0}% of total</p>
+                                <p className="text-xs text-muted-foreground">{stats?.wauPercentage || 0}% of total users</p>
                             </div>
                         </div>
                     </CardContent>
@@ -158,21 +158,7 @@ export default function UserInsightsPage() {
                             <div>
                                 <p className="text-sm text-muted-foreground">Monthly Active Users</p>
                                 <p className="text-2xl font-bold">{stats?.mau || 0}</p>
-                                <p className="text-xs text-muted-foreground">{stats?.mauPercentage || 0}% of total</p>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardContent className="p-6">
-                        <div className="flex items-center gap-3">
-                            <div className="p-3 bg-orange-500/10 rounded-lg">
-                                <Users className="w-5 h-5 text-orange-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-muted-foreground">Total Users</p>
-                                <p className="text-2xl font-bold">{stats?.totalUsers || 0}</p>
+                                <p className="text-xs text-muted-foreground">{stats?.mauPercentage || 0}% of total users</p>
                             </div>
                         </div>
                     </CardContent>

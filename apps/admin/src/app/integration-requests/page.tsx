@@ -86,64 +86,6 @@ export default function IntegrationRequestsPage() {
             const params = new URLSearchParams();
             if (statusFilter) params.append('status', statusFilter);
 
-            // Mock Data for UI stability if API fails or returns empty
-            const mockRequests: IntegrationRequest[] = [
-                {
-                    id: '1',
-                    userId: 'user-1',
-                    userName: 'Sarah Jenkins',
-                    userEmail: 'sarah@acme.inc',
-                    integrationIds: ['salesforce', 'slack'],
-                    status: 'pending',
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                },
-                {
-                    id: '2',
-                    userId: 'user-2',
-                    userName: 'Mike Ross',
-                    userEmail: 'mike@pearson.com',
-                    integrationIds: ['asana'],
-                    status: 'under_review',
-                    adminNotes: 'Checking API capabilities for v3',
-                    createdAt: new Date(Date.now() - 86400000).toISOString(),
-                    updatedAt: new Date().toISOString()
-                },
-                {
-                    id: '3',
-                    userId: 'user-3',
-                    userName: 'Jessica Pearson',
-                    userEmail: 'jessica@pearson.com',
-                    integrationIds: ['linear', 'github'],
-                    status: 'planned',
-                    createdAt: new Date(Date.now() - 172800000).toISOString(),
-                    updatedAt: new Date().toISOString()
-                },
-                {
-                    id: '4',
-                    userId: 'user-4',
-                    userName: 'Louis Litt',
-                    userEmail: 'louis@pearson.com',
-                    integrationIds: ['aws'],
-                    status: 'completed',
-                    createdAt: new Date(Date.now() - 259200000).toISOString(),
-                    updatedAt: new Date().toISOString()
-                }
-            ];
-
-            const mockStats: Stats = {
-                total: 12,
-                pending: 4,
-                underReview: 3,
-                planned: 2,
-                completed: 3,
-                topRequested: [
-                    { id: 'salesforce', count: 8 },
-                    { id: 'linear', count: 6 },
-                    { id: 'slack', count: 5 }
-                ]
-            };
-
             try {
                 const [requestsRes, statsRes] = await Promise.all([
                     fetch(`${API_URL}/integration-requests?${params.toString()}`),
@@ -152,22 +94,35 @@ export default function IntegrationRequestsPage() {
 
                 if (requestsRes.ok) {
                     const data = await requestsRes.json();
-                    // Use mock data if API returns empty array, just for demo purposes
-                    setRequests(data.items && data.items.length > 0 ? data.items : mockRequests);
+                    setRequests(data.items || []);
                 } else {
-                    setRequests(mockRequests);
+                    setRequests([]);
                 }
 
                 if (statsRes.ok) {
                     const statsData = await statsRes.json();
-                    setStats(statsData.total > 0 ? statsData : mockStats);
+                    setStats(statsData);
                 } else {
-                    setStats(mockStats);
+                    setStats({
+                        total: 0,
+                        pending: 0,
+                        underReview: 0,
+                        planned: 0,
+                        completed: 0,
+                        topRequested: []
+                    });
                 }
             } catch (err) {
-                console.warn("API fetch failed, using mock data", err);
-                setRequests(mockRequests);
-                setStats(mockStats);
+                console.error("API fetch failed", err);
+                setRequests([]);
+                setStats({
+                    total: 0,
+                    pending: 0,
+                    underReview: 0,
+                    planned: 0,
+                    completed: 0,
+                    topRequested: []
+                });
             }
 
         } catch (e) {

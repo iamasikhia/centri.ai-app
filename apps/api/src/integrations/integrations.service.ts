@@ -18,6 +18,8 @@ import { NotionProvider } from './providers/notion.provider';
 import { GoogleChatProvider } from './providers/google-chat.provider';
 import { TeamsProvider } from './providers/teams.provider';
 import { MeetingAnalysisService } from '../meetings/meeting-analysis.service';
+import { TokenRefreshService } from './token-refresh.service';
+import axios from 'axios';
 
 @Injectable()
 export class IntegrationsService {
@@ -28,6 +30,7 @@ export class IntegrationsService {
     private encryption: EncryptionService,
     private config: ConfigService,
     private analysisService: MeetingAnalysisService,
+    private tokenRefresh: TokenRefreshService,
   ) {
     this.providers = {
       google: new GoogleProvider(config),

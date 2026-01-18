@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { MOCK_MEETINGS } from '@/lib/mock-meetings';
 import { MeetingsList } from '@/components/meetings/meetings-list';
 import { TranscriptUploadModal } from '@/components/meetings/transcript-upload-modal';
 import { TranscriptImportModal } from '@/components/meetings/transcript-import-modal';
@@ -71,11 +70,11 @@ export default function MeetingsPage() {
                 }));
                 setMeetings(mapped);
             } else {
-                setMeetings(MOCK_MEETINGS);
+                setMeetings([]);
             }
         } catch (e) {
             console.error("Failed to fetch meetings", e);
-            setMeetings(MOCK_MEETINGS);
+            setMeetings([]);
         } finally {
             setIsLoading(false);
         }

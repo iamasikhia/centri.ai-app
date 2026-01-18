@@ -84,36 +84,8 @@ export function ActionItemsDashboard() {
             }
         } catch (e) {
             console.error('Failed to fetch action items', e);
-            // Fallback to empty if API fails, or keep mock data if you prefer
-            // For now, we'll keep the mock data only if it's a network error to avoid empty state during demos
-            if (items.length === 0) {
-                setItems([
-                    {
-                        id: '1',
-                        title: 'Review API documentation for v2 endpoints',
-                        owner: 'Sarah Chen',
-                        ownerEmail: 'sarah@company.com',
-                        dueDate: addDays(new Date(), 2).toISOString(),
-                        status: 'open',
-                        source: 'meeting',
-                        sourceName: 'Engineering Sync',
-                        createdAt: new Date().toISOString(),
-                        priority: 'high'
-                    },
-                    {
-                        id: '2',
-                        title: 'Prepare demo for stakeholder meeting',
-                        owner: 'Mike Johnson',
-                        ownerEmail: 'mike@company.com',
-                        dueDate: addDays(new Date(), -1).toISOString(),
-                        status: 'open',
-                        source: 'meeting',
-                        sourceName: 'Sprint Planning',
-                        createdAt: new Date().toISOString(),
-                        priority: 'high'
-                    }
-                ]);
-            }
+            // Keep items empty if API fails - no mock data
+            setItems([]);
         } finally {
             setLoading(false);
         }

@@ -44,7 +44,7 @@ export const fundingOpportunities: FundingOpportunity[] = [
         ],
         stage: ['Idea', 'MVP', 'Pre-Seed'],
         location: 'San Francisco / Remote',
-        deadline: '2026-04-05T23:59:59Z', // Mock future date
+        deadline: '2026-04-05T23:59:59Z', // YC application deadline
         website: 'https://www.ycombinator.com',
         aiInsight: 'Best for ambitious founders looking for top-tier network and valuation. Highly competitive.',
         tags: ['Global', 'Tech', 'Prestitigious']

@@ -7,17 +7,19 @@ import Stripe from 'stripe';
 export const PRICING_TIERS = {
     free: {
         name: 'Free',
-        description: 'Discovery Only - See the magic',
+        description: 'Discovery Plan - Trial without a credit card. See the magic and hit a paywall fast.',
         price: 0,
         priceId: null,
         features: [
             '1 user',
-            '1 integration',
+            '1 integration (Google Calendar or Slack)',
             '5 meetings/month',
+            '1 weekly product brief',
             'Basic dashboard',
-            'No AI summaries',
+            'No chat copilot',
             'No codebase intelligence',
-            'No chat copilot'
+            'No stakeholder management',
+            'No exports'
         ],
         limits: {
             integrations: 1,
@@ -26,23 +28,27 @@ export const PRICING_TIERS = {
             aiSummaries: false,
             codebaseIntelligence: false,
             reports: false,
-            chatCopilot: false
+            chatCopilot: false,
+            stakeholderManagement: false,
+            exports: false
         }
     },
     pro: {
         name: 'Pro',
-        description: 'Your core revenue engine',
+        description: 'Founder Plan - This replaces Slack digging, GitHub guessing, and meeting chaos.',
         price: 29,
         priceId: process.env.STRIPE_PRO_PRICE_ID,
         features: [
             'Unlimited integrations',
             'Unlimited meetings',
-            'AI summaries & insights',
+            'AI meeting summaries',
             'Weekly executive brief',
-            'Codebase intelligence',
-            'Meeting intelligence',
-            'Product updates dashboard',
+            'Product intelligence dashboard',
+            'Codebase intelligence (non-technical explanations)',
             'Chat copilot',
+            'Updates & newsletters',
+            'Stakeholder management',
+            'Todo + calendar sync',
             'Priority support'
         ],
         limits: {
@@ -52,67 +58,26 @@ export const PRICING_TIERS = {
             aiSummaries: true,
             codebaseIntelligence: true,
             reports: true,
-            chatCopilot: true
-        }
-    },
-    founder: {
-        name: 'Founder',
-        description: 'Limited to first 100 users',
-        price: 29,
-        priceId: process.env.STRIPE_PRO_PRICE_ID, // Maps to Pro price for now, or use specific FOUNDER_PRICE_ID
-        features: [
-            'Same as Pro',
-            'Locked price forever',
-            'Early access to features',
-            'Founder community access'
-        ],
-        limits: {
-            integrations: -1,
-            meetingsPerMonth: -1,
-            users: 1,
-            aiSummaries: true,
-            codebaseIntelligence: true,
-            reports: true,
-            chatCopilot: true
-        }
-    },
-    team: {
-        name: 'Team',
-        description: 'Scale engine',
-        price: 79,
-        priceId: process.env.STRIPE_TEAM_PRICE_ID,
-        features: [
-            'Everything in Pro',
-            'Shared dashboards',
-            'Team analytics',
-            'Admin controls',
-            'Stakeholder reporting',
-            'Org-level integrations',
-            'SSO & API access',
-            'Role-based access'
-        ],
-        limits: {
-            integrations: -1,
-            meetingsPerMonth: -1,
-            users: -1,
-            aiSummaries: true,
-            codebaseIntelligence: true,
-            reports: true,
-            chatCopilot: true
+            chatCopilot: true,
+            stakeholderManagement: true,
+            exports: true
         }
     },
     enterprise: {
         name: 'Enterprise',
-        description: 'For large organizations',
-        price: null, // Contact sales
+        description: 'For big orgs with advanced security and compliance needs.',
+        price: null, // Custom pricing
         priceId: null,
         features: [
-            'Everything in Team',
-            'Dedicated account manager',
+            'Everything in Pro',
+            'SSO (Okta, Azure, Google)',
+            'SOC2 compliance',
+            'Audit logs',
+            'Dedicated support',
+            'API access',
             'Custom integrations',
-            'SLA guarantees',
-            'On-premise option',
-            'Advanced security & compliance'
+            'Data residency',
+            'Onboarding & training'
         ],
         limits: {
             integrations: -1,
@@ -121,7 +86,9 @@ export const PRICING_TIERS = {
             aiSummaries: true,
             codebaseIntelligence: true,
             reports: true,
-            chatCopilot: true
+            chatCopilot: true,
+            stakeholderManagement: true,
+            exports: true
         }
     }
 };
@@ -153,8 +120,19 @@ export class StripeService {
      * Get or create a Stripe customer for a user
      */
     async getOrCreateCustomer(userId: string): Promise<string> {
-        const user = await this.prisma.user.findUnique({ where: { id: userId } });
-        if (!user) throw new NotFoundException('User not found');
+        // Get or create user in database
+        let user = await this.prisma.user.findUnique({ where: { id: userId } });
+        
+        if (!user) {
+            // Create user if doesn't exist (for checkout flow without auth)
+            user = await this.prisma.user.create({
+                data: {
+                    id: userId,
+                    email: userId.includes('@') ? userId : `${userId}@centri.ai`,
+                    name: 'User',
+                },
+            });
+        }
 
         if (user.stripeCustomerId) {
             return user.stripeCustomerId;
@@ -183,7 +161,7 @@ export class StripeService {
      */
     async createCheckoutSession(
         userId: string,
-        tier: 'pro' | 'team',
+        tier: 'pro',
         successUrl: string,
         cancelUrl: string,
     ): Promise<{ url: string; sessionId: string }> {
@@ -405,7 +383,6 @@ export class StripeService {
 
     private getTierFromPriceId(priceId: string): string {
         if (priceId === this.config.get('STRIPE_PRO_PRICE_ID')) return 'pro';
-        if (priceId === this.config.get('STRIPE_TEAM_PRICE_ID')) return 'team';
         return 'free';
     }
 
@@ -491,11 +468,11 @@ export class StripeService {
         }
 
         const featureTierMap: Record<string, string[]> = {
-            unlimited_integrations: ['pro', 'team', 'enterprise'],
-            unlimited_meetings: ['pro', 'team', 'enterprise'],
-            ai_insights: ['pro', 'team', 'enterprise'],
-            codebase_intelligence: ['pro', 'team', 'enterprise'],
-            team_features: ['team', 'enterprise'],
+            unlimited_integrations: ['pro', 'enterprise'],
+            unlimited_meetings: ['pro', 'enterprise'],
+            ai_insights: ['pro', 'enterprise'],
+            codebase_intelligence: ['pro', 'enterprise'],
+            team_features: ['enterprise'],
         };
 
         return featureTierMap[feature]?.includes(tier) ?? false;

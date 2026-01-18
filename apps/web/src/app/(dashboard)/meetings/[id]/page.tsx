@@ -2,7 +2,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { MOCK_MEETINGS } from '@/lib/mock-meetings';
 import { MeetingSummary } from '@/components/meetings/meeting-summary';
 import { MeetingDecisions } from '@/components/meetings/meeting-decisions';
 import { MeetingActionItems } from '@/components/meetings/meeting-action-items';
@@ -84,15 +83,13 @@ export default function MeetingDetailPage({ params }: { params: { id: string } }
                     };
                     setMeeting(mapped);
                 } else {
-                    // Fallback to mock if API fails/not found for demo
-                    console.warn(`Meeting ${params.id} not found on API, checking mocks...`);
-                    const found = MOCK_MEETINGS.find(m => m.id === params.id);
+                    console.warn(`Meeting ${params.id} not found on API`);
+                    const found = null;
                     setMeeting(found || null);
                 }
             } catch (e) {
                 console.error("Failed to fetch meeting details", e);
-                // Fallback to mock
-                const found = MOCK_MEETINGS.find(m => m.id === params.id);
+                const found = null;
                 setMeeting(found || null);
             }
         };

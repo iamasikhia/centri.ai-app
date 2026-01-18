@@ -2,11 +2,14 @@ import {
   Activity,
   BarChart3,
   Globe,
-  HardDrive,
   Shield,
   Zap,
   Server,
-  Users
+  Users,
+  DollarSign,
+  TrendingUp,
+  UserCheck,
+  UserX
 } from 'lucide-react';
 import { MetricZone } from '@/components/dashboard/metric-zone';
 import { DataCard } from '@/components/dashboard/data-card';
@@ -16,13 +19,13 @@ import {
   getFeatureUsage,
   getIntegrationHealth,
   getAIIntelligence,
-  getSystemReliability
+  getSystemReliability,
+  getRevenueMetrics
 } from '@/lib/analytics';
-import { Separator } from '@/components/ui/separator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { UserGrowthChart } from '@/components/charts/user-growth-chart';
 import { formatNumber } from '@/lib/utils';
 import { RefreshButton } from '@/components/dashboard/refresh-button';
+import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -33,57 +36,100 @@ export default async function MasterControlPage() {
     features,
     integrations,
     ai,
-    reliability
+    reliability,
+    revenue
   ] = await Promise.all([
     getGlobalKPIs(),
     getFeatureUsage(),
     getIntegrationHealth(),
     getAIIntelligence(),
-    getSystemReliability()
+    getSystemReliability(),
+    getRevenueMetrics()
   ]);
 
   return (
     <div className="flex flex-col gap-8 p-8 max-w-[1600px] mx-auto pb-20">
 
       {/* Header */}
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-4 rounded-2xl border bg-gradient-to-br from-primary/5 via-background to-background p-8 backdrop-blur-sm">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">Mission Control</h1>
-            <p className="text-muted-foreground">Global system overview</p>
+          <div className="space-y-2">
+            <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground via-foreground to-foreground/70 bg-clip-text text-transparent">
+              Mission Control
+            </h1>
+            <p className="text-muted-foreground text-lg">Global system overview and revenue metrics</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <RefreshButton />
-            <div className="flex flex-col items-end">
-              <span className="text-xs font-medium text-muted-foreground uppercase">System Status</span>
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="font-semibold text-sm">Operational</span>
+            <div className="flex flex-col items-end px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase">System Status</span>
+              <div className="flex items-center gap-2 mt-1">
+                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shadow-lg shadow-emerald-500/50" />
+                <span className="font-bold text-sm text-emerald-600 dark:text-emerald-400">Operational</span>
               </div>
             </div>
           </div>
         </div>
-        <Separator className="mt-4" />
+      </div>
+
+      {/* REVENUE SUMMARY - Compact Overview */}
+      <div className="rounded-2xl border bg-gradient-to-br from-primary/10 via-primary/5 to-background p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-lg bg-primary/20">
+              <DollarSign className="w-6 h-6 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
+                Revenue Overview
+                {revenue.subscriptionGrowthRate > 0 && (
+                  <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 px-2 py-1 rounded-full bg-emerald-500/10">
+                    +{revenue.subscriptionGrowthRate.toFixed(1)}% growth
+                  </span>
+                )}
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">Key financial metrics at a glance</p>
+            </div>
+          </div>
+          <Link 
+            href="/revenue" 
+            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
+          >
+            View Detailed Revenue →
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+          <DataCard
+            title="MRR"
+            value={`$${revenue.mrr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            intent="good"
+          />
+          <DataCard
+            title="ARR"
+            value={`$${revenue.arr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            intent="good"
+          />
+          <DataCard
+            title="Paying Users"
+            value={revenue.payingUsers}
+            subValue={`${revenue.totalUsers > 0 ? ((revenue.payingUsers / revenue.totalUsers) * 100).toFixed(1) : '0'}% of ${revenue.totalUsers} total`}
+            intent="good"
+          />
+          <DataCard
+            title="ARPU"
+            value={`$${revenue.arpu.toFixed(2)}`}
+            intent="good"
+          />
+        </div>
       </div>
 
       {/* 1. GLOBAL KPIs */}
       <MetricZone title="Global KPIs" icon={Globe} description="Core business health and growth velocity">
         <DataCard
           title="Total Users"
-          value={kpis.totalUsers}
-          trend={kpis.growthRates.users}
+          value={revenue.totalUsers}
+          subValue={`${revenue.payingUsers} paying • ${revenue.freeUsers} free`}
           intent="good"
-        />
-        <DataCard
-          title="Daily Active Users"
-          value={kpis.dau}
-          subValue={`(${((kpis.dau / kpis.totalUsers) * 100).toFixed(1)}%)`}
-          trend={kpis.growthRates.dau}
-          intent="good"
-        />
-        <DataCard
-          title="Monthly Active Users"
-          value={kpis.mau}
         />
         <DataCard
           title="Activation Rate"
@@ -91,23 +137,36 @@ export default async function MasterControlPage() {
           intent="good"
         />
         <DataCard
+          title="New Signups (This Month)"
+          value={kpis.newSignups}
+          intent="good"
+        />
+        <DataCard
           title="Active Organizations"
           value={kpis.activeOrgs}
         />
+        <Card className="relative overflow-hidden border-2 transition-all duration-300 hover:shadow-lg hover:scale-[1.02] border-border bg-gradient-to-br from-primary/5 via-primary/2 to-transparent">
+          <CardContent className="p-5">
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">User Activity</p>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-bold tracking-tight bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
+                  DAU: {kpis.dau} | WAU: {kpis.wau} | MAU: {kpis.mau}
+                </span>
+              </div>
+              <Link 
+                href="/user-insights" 
+                className="text-xs text-primary hover:underline font-medium inline-block"
+              >
+                View detailed activity insights →
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
         <DataCard
-          title="Churn Rate (Est.)"
-          value={`${kpis.churnRate}%`}
+          title="Churn Rate"
+          value={`${revenue.churnedUsers > 0 && revenue.payingUsers > 0 ? ((revenue.churnedUsers / revenue.payingUsers) * 100).toFixed(1) : '0'}%`}
           intent="bad"
-          trend={-0.1}
-        />
-        <DataCard
-          title="WAU"
-          value={kpis.wau}
-        />
-        <DataCard
-          title="New Signups Today"
-          value={kpis.newSignups}
-          intent="good"
         />
       </MetricZone>
 
@@ -193,27 +252,6 @@ export default async function MasterControlPage() {
             <span className="font-mono font-bold">{reliability.jobFailures}</span>
           </div>
         </div>
-        <div className="col-span-full border rounded-lg p-6 bg-card">
-          <h3 className="text-sm font-medium mb-4 text-muted-foreground uppercase tracking-wider">Pipeline Status</h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            {Object.entries(reliability.pipelineStatus).map(([name, status]) => {
-              const labelMap: Record<string, string> = {
-                ai: 'AI',
-                github: 'GitHub',
-                api: 'API',
-                slack: 'Slack',
-                calendar: 'Calendar',
-                notifications: 'Notifications'
-              };
-              return (
-                <div key={name} className="flex flex-col gap-2">
-                  <span className="text-sm font-medium">{labelMap[name] || name}</span>
-                  <StatusBadge status={status as any} />
-                </div>
-              );
-            })}
-          </div>
-        </div>
       </MetricZone>
 
       {/* 6. SECURITY & COMPLIANCE */}
@@ -222,21 +260,9 @@ export default async function MasterControlPage() {
           <CardHeader><CardTitle className="text-sm">Audit Log Stream</CardTitle></CardHeader>
           <CardContent>
             <div className="flex flex-col gap-2">
-              {[
-                { action: 'Admin Login', user: 'iseoluwa@centri.ai', ip: '192.168.1.1', time: 'Just now' },
-                { action: 'Permission Change', user: 'System', details: 'Updated Role: Admin', time: '2m ago' },
-                { action: 'Token Access', user: 'API Client', details: 'Read: Users', time: '5m ago' },
-              ].map((log, i) => (
-                <div key={i} className="flex items-center justify-between text-sm py-2 border-b last:border-0">
-                  <div className="flex gap-4">
-                    <span className="font-mono text-xs text-muted-foreground w-20">{log.time}</span>
-                    <span className="font-medium text-foreground">{log.action}</span>
-                  </div>
-                  <div className="text-muted-foreground">
-                    {log.user}
-                  </div>
-                </div>
-              ))}
+              <p className="text-sm text-muted-foreground text-center py-8">
+                Audit logging will be implemented in a future update. No audit logs available yet.
+              </p>
             </div>
           </CardContent>
         </Card>

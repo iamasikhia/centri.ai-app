@@ -32,7 +32,6 @@ interface SubscriptionStatus {
 const TIER_DISPLAY = {
     free: { name: 'Free', color: 'text-muted-foreground', bg: 'bg-muted' },
     pro: { name: 'Pro', color: 'text-primary', bg: 'bg-primary/10' },
-    team: { name: 'Team', color: 'text-purple-600', bg: 'bg-purple-100 dark:bg-purple-900/30' },
     enterprise: { name: 'Enterprise', color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' },
 };
 

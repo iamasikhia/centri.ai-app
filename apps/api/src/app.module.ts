@@ -21,6 +21,7 @@ import { ReportsModule } from './reports/reports.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { IntegrationRequestsModule } from './integration-requests/integration-requests.module';
 import { StripeModule } from './stripe/stripe.module';
+import { FeaturesModule } from './features/features.module';
 
 @Module({
     imports: [
@@ -44,6 +45,7 @@ import { StripeModule } from './stripe/stripe.module';
         FeedbackModule,
         IntegrationRequestsModule,
         StripeModule,
+        FeaturesModule,
     ],
     providers: [EncryptionService],
 })

@@ -33,20 +33,40 @@ export function DataCard({
         trendColor = isPositive ? "text-red-600" : (isNegative ? "text-emerald-600/90" : "text-muted-foreground");
     }
 
+    // Determine background gradient based on intent
+    let bgGradient = "";
+    let borderColor = "";
+    if (intent === 'good') {
+        bgGradient = "bg-gradient-to-br from-emerald-500/5 via-emerald-500/2 to-transparent";
+        borderColor = "border-emerald-500/20";
+    } else if (intent === 'bad') {
+        bgGradient = "bg-gradient-to-br from-red-500/5 via-red-500/2 to-transparent";
+        borderColor = "border-red-500/20";
+    } else {
+        bgGradient = "bg-gradient-to-br from-primary/5 via-primary/2 to-transparent";
+        borderColor = "border-border";
+    }
+
     return (
-        <Card className={cn("overflow-hidden", className)}>
-            <CardContent className="p-4">
-                <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</p>
+        <Card className={cn("overflow-hidden border-2 transition-all duration-300 hover:shadow-lg hover:scale-[1.02]", borderColor, bgGradient, className)}>
+            <CardContent className="p-5">
+                <div className="space-y-3">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{title}</p>
                     <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-bold tracking-tight">
+                        <span className="text-3xl font-bold tracking-tight bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
                             {typeof value === 'number' ? formatNumber(value) : value}
                         </span>
-                        {subValue && <span className="text-sm text-muted-foreground">{subValue}</span>}
+                        {subValue && <span className="text-sm text-muted-foreground font-medium">{subValue}</span>}
                     </div>
 
                     {(trend !== undefined) && (
-                        <div className={cn("flex items-center gap-1 text-xs font-medium", trendColor)}>
+                        <div className={cn("flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-full w-fit", 
+                            trendColor,
+                            isPositive && intent === 'good' ? "bg-emerald-500/10" : "",
+                            isNegative && intent === 'good' ? "bg-red-500/10" : "",
+                            isPositive && intent === 'bad' ? "bg-red-500/10" : "",
+                            isNegative && intent === 'bad' ? "bg-emerald-500/10" : ""
+                        )}>
                             {isPositive && <TrendingUp className="h-3 w-3" />}
                             {isNegative && <TrendingDown className="h-3 w-3" />}
                             {isNeutral && <Minus className="h-3 w-3" />}

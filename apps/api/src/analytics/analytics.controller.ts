@@ -29,4 +29,9 @@ export class AnalyticsController {
     getSystemReliability() {
         return this.analyticsService.getSystemReliability();
     }
+
+    @Get('revenue')
+    getRevenueMetrics() {
+        return this.analyticsService.getRevenueMetrics();
+    }
 }

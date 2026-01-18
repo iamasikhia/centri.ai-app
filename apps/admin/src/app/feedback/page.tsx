@@ -72,11 +72,15 @@ export default function FeedbackPage() {
 
             if (feedbackRes.ok) {
                 const data = await feedbackRes.json();
-                setFeedbackList(data.items || []);
+                setFeedbackList(data.items || data || []);
+            } else {
+                console.error('Failed to fetch feedback:', feedbackRes.status, await feedbackRes.text());
             }
             if (statsRes.ok) {
                 const statsData = await statsRes.json();
                 setStats(statsData);
+            } else {
+                console.error('Failed to fetch stats:', statsRes.status);
             }
         } catch (e) {
             console.error('Error fetching feedback:', e);
@@ -115,7 +119,7 @@ export default function FeedbackPage() {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="p-8 max-w-[1600px] mx-auto space-y-6">
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
@@ -131,30 +135,30 @@ export default function FeedbackPage() {
             </div>
 
             {/* Stats Cards */}
-            {stats && (
+            {!loading && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <Card>
                         <CardContent className="p-4">
                             <div className="text-sm text-muted-foreground">Total Feedback</div>
-                            <div className="text-3xl font-bold">{stats.total}</div>
+                            <div className="text-3xl font-bold">{stats?.total || feedbackList.length || 0}</div>
                         </CardContent>
                     </Card>
                     <Card className="border-blue-200 dark:border-blue-800">
                         <CardContent className="p-4">
                             <div className="text-sm text-blue-600 dark:text-blue-400">New</div>
-                            <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">{stats.new}</div>
+                            <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">{stats?.new || feedbackList.filter(f => f.status === 'new').length || 0}</div>
                         </CardContent>
                     </Card>
                     <Card className="border-amber-200 dark:border-amber-800">
                         <CardContent className="p-4">
                             <div className="text-sm text-amber-600 dark:text-amber-400">Reviewed</div>
-                            <div className="text-3xl font-bold text-amber-600 dark:text-amber-400">{stats.reviewed}</div>
+                            <div className="text-3xl font-bold text-amber-600 dark:text-amber-400">{stats?.reviewed || feedbackList.filter(f => f.status === 'reviewed').length || 0}</div>
                         </CardContent>
                     </Card>
                     <Card className="border-emerald-200 dark:border-emerald-800">
                         <CardContent className="p-4">
                             <div className="text-sm text-emerald-600 dark:text-emerald-400">Resolved</div>
-                            <div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{stats.resolved}</div>
+                            <div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{stats?.resolved || feedbackList.filter(f => f.status === 'resolved').length || 0}</div>
                         </CardContent>
                     </Card>
                 </div>
@@ -195,13 +199,32 @@ export default function FeedbackPage() {
                 {loading ? (
                     <div className="text-center py-12 text-muted-foreground">Loading feedback...</div>
                 ) : feedbackList.length === 0 ? (
-                    <Card>
-                        <CardContent className="py-12 text-center">
-                            <MessageSquare className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-                            <h3 className="text-lg font-medium">No feedback yet</h3>
-                            <p className="text-muted-foreground">
-                                Feedback submitted by users will appear here.
-                            </p>
+                    <Card className="border-dashed">
+                        <CardContent className="py-16 text-center">
+                            <div className="flex flex-col items-center gap-4">
+                                <div className="p-4 rounded-full bg-muted/50">
+                                    <MessageSquare className="w-12 h-12 text-muted-foreground/50" />
+                                </div>
+                                <div className="space-y-2">
+                                    <h3 className="text-xl font-semibold">No feedback yet</h3>
+                                    <p className="text-muted-foreground max-w-md mx-auto">
+                                        Feedback submitted by users from the main app will appear here. 
+                                        Users can submit feedback through the feedback form or contact forms.
+                                    </p>
+                                </div>
+                                {statusFilter || typeFilter ? (
+                                    <Button 
+                                        variant="outline" 
+                                        onClick={() => {
+                                            setStatusFilter('');
+                                            setTypeFilter('');
+                                        }}
+                                        className="mt-2"
+                                    >
+                                        Clear Filters
+                                    </Button>
+                                ) : null}
+                            </div>
                         </CardContent>
                     </Card>
                 ) : (

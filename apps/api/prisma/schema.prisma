@@ -286,6 +286,17 @@ model SystemSetting {
   updatedAt DateTime @updatedAt
 }
 
+// Feature visibility control - admins can enable/disable features for all users
+model FeatureVisibility {
+  id          String   @id @default(uuid())
+  featureKey  String   @unique // e.g., 'dashboard', 'meetings', 'codebase', 'todos', 'checkins', 'stakeholders', 'wrapped'
+  label       String   // Display name for admin UI
+  enabled     Boolean  @default(true) // Whether this feature is visible to users
+  description String?  // Optional description
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model OnboardingResponse {
   id                   String   @id @default(uuid())
   userId               String

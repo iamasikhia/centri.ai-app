@@ -22,7 +22,7 @@ export class StripeController {
     @Post('checkout')
     async createCheckout(
         @Headers('x-user-id') userId: string,
-        @Body() body: { tier: 'pro' | 'team'; successUrl?: string; cancelUrl?: string },
+        @Body() body: { tier: 'pro'; successUrl?: string; cancelUrl?: string },
     ) {
         if (!userId) {
             throw new BadRequestException('User ID is required');

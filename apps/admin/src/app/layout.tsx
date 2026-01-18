@@ -11,11 +11,12 @@ export const metadata: Metadata = {
   description: "Internal admin dashboard for Centri.ai",
   icons: {
     icon: [
-      { url: '/favicon.ico' },
-      { url: '/icon.png', type: 'image/png' },
-      { url: '/logo.png', type: 'image/png' },
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon.png', type: 'image/png', sizes: '32x32' },
+      { url: '/icon-192.png', type: 'image/png', sizes: '192x192' },
+      { url: '/icon-512.png', type: 'image/png', sizes: '512x512' },
     ],
-    shortcut: '/logo.png',
+    shortcut: '/favicon.ico',
     apple: '/apple-icon.png',
   },
 };

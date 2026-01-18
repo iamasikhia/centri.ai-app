@@ -456,7 +456,7 @@ export default function DashboardPage() {
                     sessionStorage.setItem(cacheTimeKey, Date.now().toString());
                 }
             } catch (e) {
-                // Mock fallback
+                // Empty state if API fails - no mock data
                 vm = buildDashboardViewModel({ tasks: [], meetings: [], people: [], lastSyncedAt: new Date().toISOString() });
             }
             setViewModel(vm);

@@ -15,12 +15,16 @@ export interface CodebaseExplanation {
 
 @Injectable()
 export class CodebaseExplainerService {
-    private openai: OpenAI;
+    private openai: OpenAI | null;
 
     constructor(private config: ConfigService) {
-        this.openai = new OpenAI({
-            apiKey: this.config.get('OPENAI_API_KEY'),
-        });
+        const apiKey = this.config.get<string>('OPENAI_API_KEY');
+        if (apiKey) {
+            this.openai = new OpenAI({ apiKey });
+        } else {
+            console.warn('[CodebaseExplainer] OPENAI_API_KEY missing. Codebase explanation features will be disabled.');
+            this.openai = null;
+        }
     }
 
     async explainCodebase(documentation: string, repositoryName: string): Promise<CodebaseExplanation> {
@@ -72,6 +76,11 @@ CRITICAL RULES:
 - **The Mermaid diagram MUST be simple and valid syntax.**
 - Be comprehensive but concise.
 `;
+
+        if (!this.openai) {
+            console.warn('[CodebaseExplainer] OpenAI client not initialized. Using fallback.');
+            return this.generateFallbackExplanation(documentation, repositoryName);
+        }
 
         try {
             const response = await this.openai.chat.completions.create({

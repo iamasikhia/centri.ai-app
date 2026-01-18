@@ -11,41 +11,51 @@ import {
     DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Check, Sparkles, Users, Building2, Loader2, X, Crown } from 'lucide-react';
+import { Check, X, Sparkles, Users, Building2, Loader2, Crown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { EnterpriseContactModal } from '@/components/enterprise-contact-modal';
 
 const PRICING_TIERS = [
     {
         id: 'free',
         name: 'Free',
-        description: 'Discovery Only - See the magic',
+        description: 'Discovery Plan - Trial without a credit card',
         price: 0,
         priceLabel: '$0',
         period: 'forever',
         features: [
             '1 user',
-            '1 integration',
+            '1 integration (Google Calendar or Slack)',
             '5 meetings/month',
+            '1 weekly product brief',
             'Basic dashboard',
-            'No AI summaries'
+            'No chat copilot',
+            'No codebase intelligence',
+            'No stakeholder management'
         ],
-        cta: 'Current Plan',
+        cta: 'Get Started',
         highlighted: false,
         icon: Sparkles,
     },
     {
         id: 'pro',
         name: 'Pro',
-        description: 'Your core revenue engine',
+        description: 'Founder Plan - Replaces Slack digging, GitHub guessing, and meeting chaos',
         price: 29,
         priceLabel: '$29',
         period: '/month',
         features: [
             'Unlimited integrations',
             'Unlimited meetings',
-            'AI summaries & insights',
+            'AI meeting summaries',
+            'Weekly executive brief',
+            'Product intelligence dashboard',
             'Codebase intelligence',
             'Chat copilot',
+            'Updates & newsletters',
+            'Stakeholder management',
+            'Todo + calendar sync',
+            'Priority support'
         ],
         cta: 'Upgrade to Pro',
         highlighted: true,
@@ -53,40 +63,26 @@ const PRICING_TIERS = [
         badge: 'Most Popular',
     },
     {
-        id: 'founder',
-        name: 'Founder',
-        description: 'Limited to first 100 users',
-        price: 29,
-        priceLabel: '$29',
-        period: '/mo (lifetime)',
-        features: [
-            'Same as Pro',
-            'Locked price forever',
-            'Early access',
-            'Founder community'
-        ],
-        cta: 'Claim Spot',
-        highlighted: false,
-        icon: Crown,
-        badge: 'Limited Time',
-    },
-    {
-        id: 'team',
-        name: 'Team',
-        description: 'Scale engine',
-        price: 79,
-        priceLabel: '$79',
-        period: '/user/mo',
+        id: 'enterprise',
+        name: 'Enterprise',
+        description: 'For big orgs with advanced security and compliance',
+        price: null,
+        priceLabel: 'Custom',
+        period: '',
         features: [
             'Everything in Pro',
-            'Team analytics',
-            'Admin controls',
-            'SSO & API access',
-            'Shared dashboards'
+            'SSO (Okta, Azure, Google)',
+            'SOC2 compliance',
+            'Audit logs',
+            'Dedicated support',
+            'API access',
+            'Custom integrations',
+            'Data residency',
+            'Onboarding & training'
         ],
-        cta: 'Upgrade to Team',
+        cta: 'Contact Sales',
         highlighted: false,
-        icon: Users,
+        icon: Building2,
     },
 ];
 
@@ -101,6 +97,7 @@ export function PricingModal({ open, onOpenChange, currentTier = 'free' }: Prici
     const router = useRouter();
     const [loadingTier, setLoadingTier] = useState<string | null>(null);
     const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('monthly');
+    const [enterpriseModalOpen, setEnterpriseModalOpen] = useState(false);
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -111,23 +108,34 @@ export function PricingModal({ open, onOpenChange, currentTier = 'free' }: Prici
         }
 
         if (tierId === 'enterprise') {
-            window.location.href = 'mailto:sales@centri.ai?subject=Enterprise%20Plan%20Inquiry';
+            setEnterpriseModalOpen(true);
             return;
         }
 
-        if (!session) {
-            router.push('/');
+        // Use Stripe Payment Link for Pro plan
+        if (tierId === 'pro') {
+            setLoadingTier(tierId);
+            // Stripe Payment Link for Pro plan
+            const STRIPE_PAYMENT_LINK = 'https://buy.stripe.com/test_28EaEXebR7RJ7Jya7O3oA01';
+            console.log('[Pricing Modal] Redirecting to Stripe Payment Link:', STRIPE_PAYMENT_LINK);
+            window.location.href = STRIPE_PAYMENT_LINK;
             return;
         }
+
+        // Fallback to API checkout for other tiers (if needed)
+        const userId = session?.user?.email || 'default-user-id';
 
         setLoadingTier(tierId);
 
         try {
+            console.log('[Pricing Modal] Starting checkout for tier:', tierId);
+            console.log('[Pricing Modal] API URL:', API_URL);
+
             const response = await fetch(`${API_URL}/stripe/checkout`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'x-user-id': 'default-user-id',
+                    'x-user-id': userId,
                 },
                 body: JSON.stringify({
                     tier: tierId,
@@ -136,16 +144,30 @@ export function PricingModal({ open, onOpenChange, currentTier = 'free' }: Prici
                 }),
             });
 
+            console.log('[Pricing Modal] Response status:', response.status);
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+                console.error('[Pricing Modal] API error:', errorData);
+                alert(`Checkout failed: ${errorData.message || 'Please try again or contact support.'}`);
+                setLoadingTier(null);
+                return;
+            }
+
             const data = await response.json();
+            console.log('[Pricing Modal] Checkout response:', data);
 
             if (data.url) {
+                console.log('[Pricing Modal] Redirecting to:', data.url);
                 window.location.href = data.url;
             } else {
-                console.error('No checkout URL received');
+                console.error('[Pricing Modal] No checkout URL received:', data);
+                alert('Failed to create checkout session. Please try again or contact support.');
+                setLoadingTier(null);
             }
         } catch (error) {
-            console.error('Checkout error:', error);
-        } finally {
+            console.error('[Pricing Modal] Checkout error:', error);
+            alert(`Connection error: ${error instanceof Error ? error.message : 'Unable to reach server. Please check if the backend is running on port 3001.'}`);
             setLoadingTier(null);
         }
     };
@@ -207,70 +229,86 @@ export function PricingModal({ open, onOpenChange, currentTier = 'free' }: Prici
 
                 {/* Pricing Cards */}
                 <div className="p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
                         {PRICING_TIERS.map((tier) => {
                             const Icon = tier.icon;
                             const isCurrentPlan = tier.id === currentTier;
+                            const isNoFeature = (feature: string) => feature.toLowerCase().startsWith('no ');
 
                             return (
                                 <div
                                     key={tier.id}
                                     className={cn(
-                                        "relative flex flex-col rounded-xl border p-5 transition-all duration-200",
+                                        "relative flex flex-col rounded-xl border-2 p-6 transition-all duration-300",
+                                        "h-full",
                                         tier.highlighted
-                                            ? "border-primary shadow-lg ring-2 ring-primary/20 scale-[1.02]"
-                                            : "hover:border-primary/40 hover:shadow-md",
-                                        isCurrentPlan && "bg-muted/30"
+                                            ? "border-primary shadow-xl ring-4 ring-primary/10 scale-[1.03] bg-primary/5"
+                                            : "border-border hover:border-primary/60 hover:shadow-lg",
+                                        isCurrentPlan && "bg-muted/50 border-primary/30"
                                     )}
                                 >
                                     {tier.badge && (
-                                        <div className="absolute -top-2.5 left-1/2 -translate-x-1/2">
-                                            <span className="bg-primary text-primary-foreground text-[10px] font-bold px-2.5 py-0.5 rounded-full">
+                                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
+                                            <span className="bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-full shadow-md">
                                                 {tier.badge}
                                             </span>
                                         </div>
                                     )}
 
                                     {/* Plan Header */}
-                                    <div className="flex items-center gap-2 mb-3">
+                                    <div className="flex items-start gap-3 mb-4">
                                         <div className={cn(
-                                            "p-1.5 rounded-lg",
-                                            tier.highlighted ? "bg-primary/10" : "bg-muted"
+                                            "p-2.5 rounded-lg transition-colors",
+                                            tier.highlighted ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
                                         )}>
-                                            <Icon className={cn(
-                                                "w-4 h-4",
-                                                tier.highlighted ? "text-primary" : "text-muted-foreground"
-                                            )} />
+                                            <Icon className="w-5 h-5" />
                                         </div>
-                                        <div>
-                                            <h3 className="font-semibold">{tier.name}</h3>
-                                            <p className="text-xs text-muted-foreground">{tier.description}</p>
+                                        <div className="flex-1">
+                                            <h3 className="font-bold text-lg mb-1">{tier.name}</h3>
+                                            <p className="text-xs text-muted-foreground leading-relaxed">{tier.description}</p>
                                         </div>
                                     </div>
 
                                     {/* Price */}
-                                    <div className="mb-4">
-                                        <span className="text-3xl font-bold">{getPrice(tier)}</span>
-                                        {tier.period && (
-                                            <span className="text-muted-foreground text-sm ml-1">{tier.period}</span>
-                                        )}
+                                    <div className="mb-6 pb-5 border-b">
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-4xl font-bold tracking-tight">{getPrice(tier)}</span>
+                                            {tier.period && (
+                                                <span className="text-muted-foreground text-base">{tier.period}</span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {/* Features */}
-                                    <ul className="space-y-2 mb-5 flex-1">
-                                        {tier.features.map((feature, i) => (
-                                            <li key={i} className="flex items-start gap-2">
-                                                <Check className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
-                                                <span className="text-xs">{feature}</span>
-                                            </li>
-                                        ))}
+                                    <ul className="space-y-3 mb-6 flex-1">
+                                        {tier.features.map((feature, i) => {
+                                            const isNo = isNoFeature(feature);
+                                            return (
+                                                <li key={i} className="flex items-start gap-2.5">
+                                                    {isNo ? (
+                                                        <X className="w-3.5 h-3.5 text-muted-foreground/60 mt-0.5 shrink-0" />
+                                                    ) : (
+                                                        <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+                                                    )}
+                                                    <span className={cn(
+                                                        "text-xs leading-relaxed",
+                                                        isNo ? "text-muted-foreground line-through" : "text-foreground"
+                                                    )}>
+                                                        {isNo ? feature.replace(/^no /i, '') : feature}
+                                                    </span>
+                                                </li>
+                                            );
+                                        })}
                                     </ul>
 
                                     {/* CTA Button */}
                                     <Button
-                                        className="w-full"
+                                        className={cn(
+                                            "w-full font-semibold",
+                                            tier.highlighted && "shadow-md hover:shadow-lg"
+                                        )}
                                         variant={tier.highlighted ? "default" : "outline"}
-                                        size="sm"
+                                        size="default"
                                         onClick={() => handleSelectPlan(tier.id)}
                                         disabled={loadingTier === tier.id || isCurrentPlan}
                                     >
@@ -301,12 +339,22 @@ export function PricingModal({ open, onOpenChange, currentTier = 'free' }: Prici
                                 <p className="text-xs text-muted-foreground">Custom pricing, dedicated support, and more</p>
                             </div>
                         </div>
-                        <Button variant="outline" size="sm" asChild>
-                            <a href="mailto:sales@centri.ai">Contact Sales</a>
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => setEnterpriseModalOpen(true)}
+                        >
+                            Contact Sales
                         </Button>
                     </div>
                 </div>
             </DialogContent>
+
+            {/* Enterprise Contact Modal */}
+            <EnterpriseContactModal 
+                open={enterpriseModalOpen} 
+                onOpenChange={setEnterpriseModalOpen} 
+            />
         </Dialog>
     );
 }

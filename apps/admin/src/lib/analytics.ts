@@ -22,7 +22,7 @@ export async function getGlobalKPIs() {
     const data = await fetchAnalytics('kpis');
     if (data) return data;
 
-    // Fallback Mock (Only if API fails)
+    // Fallback to empty (Only if API fails)
     return {
         totalUsers: 0,
         dau: 0,
@@ -91,5 +91,28 @@ export async function getSystemReliability() {
             calendar: 'unknown',
             notifications: 'unknown'
         }
+    };
+}
+
+export async function getRevenueMetrics() {
+    const data = await fetchAnalytics('revenue');
+    if (data) return data;
+
+    return {
+        mrr: 0,
+        arr: 0,
+        payingUsers: 0,
+        freeUsers: 0,
+        newPayingThisMonth: 0,
+        churnedUsers: 0,
+        arpu: 0,
+        subscriptionGrowthRate: 0,
+        tierBreakdown: {
+            free: 0,
+            pro: 0,
+            enterprise: 0
+        },
+        activeSubscriptions: 0,
+        totalUsers: 0
     };
 }
