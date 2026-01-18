@@ -1,8 +1,10 @@
 import { Controller, Get, Post, Body, Req, Query } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { GithubDocsService } from './github-docs.service';
 import { CodebaseExplainerService } from './codebase-explainer.service';
 import { CodebaseAnalyzerService } from './codebase-analyzer.service';
 import { IntegrationsService } from './integrations.service';
+import Anthropic from '@anthropic-ai/sdk';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { GoogleDocsProvider } from './providers/google-docs.provider';
@@ -10,13 +12,21 @@ import { formatProductReport } from './utils/report-formatter';
 
 @Controller('codebase')
 export class CodebaseController {
+    private anthropic: Anthropic | null;
+
     constructor(
         private readonly githubDocsService: GithubDocsService,
         private readonly explainerService: CodebaseExplainerService,
         private readonly analyzerService: CodebaseAnalyzerService,
         private readonly integrationsService: IntegrationsService,
         private readonly prisma: PrismaService,
-    ) { }
+        private readonly configService: ConfigService,
+    ) {
+        const anthropicKey = this.configService.get<string>('ANTHROPIC_API_KEY');
+        if (anthropicKey) {
+            this.anthropic = new Anthropic({ apiKey: anthropicKey });
+        }
+    }
 
     @Get('repositories')
     async listRepositories(@Req() req) {
@@ -276,9 +286,30 @@ export class CodebaseController {
                 // Continue without live data
             }
 
-            // Build comprehensive system prompt
-            const OpenAI = require('openai');
-            const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+            // Get user's preferred chat model
+            let user = await this.prisma.user.findUnique({
+                where: { email: userId },
+                select: { chatModel: true },
+            });
+            if (!user) {
+                user = await this.prisma.user.findUnique({
+                    where: { id: userId },
+                    select: { chatModel: true },
+                });
+            }
+            const preferredModel = (user?.chatModel || 'openai') as 'openai' | 'claude';
+
+            // Initialize AI clients based on preference
+            let openai: any = null;
+            if (preferredModel === 'openai') {
+                const OpenAI = require('openai');
+                openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+                if (!openai) {
+                    throw new Error('OpenAI API not configured');
+                }
+            } else if (preferredModel === 'claude' && !this.anthropic) {
+                throw new Error('Claude API not configured. Please check ANTHROPIC_API_KEY in environment variables.');
+            }
 
             let analysisContext = '';
             if (analysisData) {
@@ -389,15 +420,45 @@ Remember: The PM you're helping has important business decisions to make. Help t
             // Add current question
             messages.push({ role: 'user', content: question });
 
-            const response = await openai.chat.completions.create({
-                model: 'gpt-4o',
-                messages,
-                temperature: 0.7,
-                max_tokens: 1500
-            });
+            let answer: string;
+            let tokensUsed = 0;
+            let modelUsed = 'gpt-4o';
 
-            const answer = response.choices[0]?.message?.content ||
-                "I'm sorry, I couldn't generate an answer. Please try again.";
+            if (preferredModel === 'claude' && this.anthropic) {
+                // Use Claude
+                const claudeMessages = messages
+                    .filter(m => m.role !== 'system')
+                    .map(m => ({
+                        role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
+                        content: m.content
+                    }));
+
+                const response = await this.anthropic.messages.create({
+                    model: 'claude-3-5-sonnet-20241022',
+                    max_tokens: 1500,
+                    system: systemPrompt,
+                    messages: claudeMessages,
+                    temperature: 0.7,
+                });
+
+                answer = response.content[0].type === 'text' ? response.content[0].text : 
+                    "I'm sorry, I couldn't generate an answer. Please try again.";
+                tokensUsed = response.usage.input_tokens + response.usage.output_tokens;
+                modelUsed = 'claude-3-5-sonnet-20241022';
+            } else {
+                // Use OpenAI
+                const response = await openai.chat.completions.create({
+                    model: 'gpt-4o',
+                    messages,
+                    temperature: 0.7,
+                    max_tokens: 1500
+                });
+
+                answer = response.choices[0]?.message?.content ||
+                    "I'm sorry, I couldn't generate an answer. Please try again.";
+                tokensUsed = response.usage?.total_tokens || 0;
+                modelUsed = 'gpt-4o';
+            }
 
             // Generate follow-up suggestions based on the question type
             let followUpSuggestions: string[] = [];
@@ -432,14 +493,15 @@ Remember: The PM you're helping has important business decisions to make. Help t
             return {
                 answer,
                 followUpSuggestions,
-                model: 'gpt-4o',
-                tokensUsed: response.usage?.total_tokens || 0
+                model: modelUsed,
+                tokensUsed
             };
         } catch (error) {
             console.error('[Codebase] Ask question failed', error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             return {
                 error: 'Failed to process question',
-                answer: "I'm having trouble processing your question right now. This might be because the AI service is temporarily unavailable. Please try again in a moment.",
+                answer: `I'm having trouble processing your question right now: ${errorMessage}. Please check your AI service configuration and try again.`,
                 followUpSuggestions: ["Try asking again", "Rephrase your question"]
             };
         }

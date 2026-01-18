@@ -437,6 +437,8 @@ If the 'REAL DATA' object is empty or missing the requested info, explicitly sta
 
             if (preferredModel === 'claude' && this.anthropic) {
                 // Use Claude
+                this.logger.log('Using Claude API for chat response');
+                
                 const messages = [
                     ...history.map(msg => ({
                         role: (msg.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
@@ -445,27 +447,45 @@ If the 'REAL DATA' object is empty or missing the requested info, explicitly sta
                     { role: 'user' as 'user' | 'assistant', content: userPrompt }
                 ];
 
-                const response = await this.anthropic.messages.create({
-                    model: 'claude-3-5-sonnet-20241022',
-                    max_tokens: 2000,
-                    system: systemPrompt,
-                    messages: messages,
-                });
-
-                content = response.content[0].type === 'text' ? response.content[0].text : '';
-                
-                // Try to parse as JSON (Claude might return JSON)
                 try {
-                    return JSON.parse(content || '{}');
-                } catch {
-                    // If not JSON, wrap in answer field
-                    return {
-                        answer: content || "I couldn't format the response properly. Please try again.",
-                        citations: [],
-                        insights: [],
-                        actions: [],
-                        followUps: []
-                    };
+                    const response = await this.anthropic.messages.create({
+                        model: 'claude-3-5-sonnet-20241022',
+                        max_tokens: 2000,
+                        system: systemPrompt,
+                        messages: messages,
+                    });
+
+                    if (!response.content || response.content.length === 0) {
+                        throw new Error('Claude API returned empty response');
+                    }
+
+                    content = response.content[0].type === 'text' ? response.content[0].text : '';
+                    
+                    if (!content) {
+                        throw new Error('Claude API returned no text content');
+                    }
+                    
+                    this.logger.log(`Claude response received: ${content.substring(0, 100)}...`);
+                    
+                    // Try to parse as JSON (Claude might return JSON)
+                    try {
+                        const parsed = JSON.parse(content);
+                        this.logger.log('Claude response parsed as JSON successfully');
+                        return parsed;
+                    } catch (parseError) {
+                        // If not JSON, wrap in answer field
+                        this.logger.log('Claude response is not JSON, wrapping in answer field');
+                        return {
+                            answer: content || "I couldn't format the response properly. Please try again.",
+                            citations: [],
+                            insights: [],
+                            actions: [],
+                            followUps: []
+                        };
+                    }
+                } catch (claudeError) {
+                    this.logger.error('Claude API call failed:', claudeError);
+                    throw new Error(`Claude API error: ${claudeError instanceof Error ? claudeError.message : 'Unknown error'}`);
                 }
             } else {
                 // Use OpenAI (default)
