@@ -434,7 +434,7 @@ Remember: The PM you're helping has important business decisions to make. Help t
                     }));
 
                 const response = await this.anthropic.messages.create({
-                    model: 'claude-3-5-sonnet-20241022',
+                    model: 'claude-sonnet-4-5-20250929',
                     max_tokens: 1500,
                     system: systemPrompt,
                     messages: claudeMessages,
@@ -444,7 +444,7 @@ Remember: The PM you're helping has important business decisions to make. Help t
                 answer = response.content[0].type === 'text' ? response.content[0].text : 
                     "I'm sorry, I couldn't generate an answer. Please try again.";
                 tokensUsed = response.usage.input_tokens + response.usage.output_tokens;
-                modelUsed = 'claude-3-5-sonnet-20241022';
+                modelUsed = 'claude-sonnet-4-5-20250929';
             } else {
                 // Use OpenAI
                 const response = await openai.chat.completions.create({
