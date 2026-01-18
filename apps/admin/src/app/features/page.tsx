@@ -141,22 +141,32 @@ export default function FeaturesPage() {
             });
 
             if (res.ok) {
+                const data = await res.json();
                 // Update local state
                 setFeatureFlags((prev) => {
                     const existing = prev.find((f) => f.key === key);
                     if (existing) {
-                        return prev.map((f) => (f.key === key ? { ...f, enabled } : f));
+                        return prev.map((f) => (f.key === key ? { ...f, enabled: data.enabled, updatedAt: data.updatedAt } : f));
                     } else {
-                        return [...prev, { key, enabled, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }];
+                        return [...prev, { key, enabled: data.enabled, createdAt: data.createdAt, updatedAt: data.updatedAt }];
                     }
                 });
             } else {
-                console.error('Failed to update feature flag:', res.status);
-                alert('Failed to update feature flag. Please try again.');
+                const errorText = await res.text();
+                let errorMessage = 'Failed to update feature flag. Please try again.';
+                try {
+                    const errorJson = JSON.parse(errorText);
+                    errorMessage = errorJson.message || errorMessage;
+                } catch {
+                    errorMessage = errorText || errorMessage;
+                }
+                console.error('Failed to update feature flag:', res.status, errorMessage);
+                alert(`Failed to update feature flag: ${errorMessage}`);
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error('Error updating feature flag:', e);
-            alert('Error updating feature flag. Please try again.');
+            const errorMessage = e.message || 'Network error. Please check if the API is running.';
+            alert(`Error updating feature flag: ${errorMessage}`);
         } finally {
             setSaving(null);
         }

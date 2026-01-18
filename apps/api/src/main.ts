@@ -20,6 +20,8 @@ async function bootstrap() {
             'https://localhost:3000',
             'http://localhost:3002',
             'http://127.0.0.1:3002',
+            'http://localhost:3003',
+            'http://127.0.0.1:3003',
             // Allow ngrok/tunnel origins if user uses them
             /^https:\/\/.*\.ngrok-free\.app$/,
             /^https:\/\/.*\.ngrok\.io$/,
