@@ -151,7 +151,9 @@ export class ReportsService {
                 meetingHours,
                 meetingCount,
                 avgMeetingLengthMinutes: avgMeetingLength,
-                focusPercentage
+                focusPercentage,
+                focusHours: Math.round(focusHours),
+                totalWorkHours: totalWorkHours
             },
             meetingsBreakdown: {
                 oneOnOne: oneOnOneCount,

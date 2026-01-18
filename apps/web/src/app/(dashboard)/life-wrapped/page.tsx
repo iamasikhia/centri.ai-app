@@ -14,6 +14,8 @@ interface WrappedData {
         meetingCount: number;
         avgMeetingLengthMinutes: number;
         focusPercentage: number;
+        focusHours?: number;
+        totalWorkHours?: number;
     };
     meetingsBreakdown: {
         oneOnOne: number;
@@ -156,14 +158,42 @@ export default function LifeWrappedPage() {
                                 Your average meeting was {data.timeOverview.avgMeetingLengthMinutes} minutes long.
                             </p>
                         </div>
-                        <div className="aspect-square bg-blue-500/10 rounded-full flex items-center justify-center border-4 border-blue-500/30 relative">
-                            <div className="text-center">
-                                <div className="text-6xl font-bold">{data.timeOverview.focusPercentage}%</div>
-                                <div className="text-blue-200 uppercase tracking-widest mt-2 font-medium">Focus Time</div>
+                        <div className="space-y-6">
+                            <div className="aspect-square bg-blue-500/10 rounded-full flex flex-col items-center justify-center border-4 border-blue-500/30 relative">
+                                <div className="text-center z-10">
+                                    <div className="text-6xl font-bold">{data.timeOverview.focusPercentage}%</div>
+                                    <div className="text-blue-200 uppercase tracking-widest mt-2 font-medium">Focus Time</div>
+                                </div>
+                                {/* Decorative rings */}
+                                <div className="absolute inset-0 rounded-full border border-blue-400/20 scale-110" />
+                                <div className="absolute inset-0 rounded-full border border-blue-400/10 scale-125" />
                             </div>
-                            {/* Decorative rings */}
-                            <div className="absolute inset-0 rounded-full border border-blue-400/20 scale-110" />
-                            <div className="absolute inset-0 rounded-full border border-blue-400/10 scale-125" />
+                            <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-6 space-y-3">
+                                <div className="text-sm text-blue-300 uppercase tracking-wider font-semibold">What this means</div>
+                                <div className="space-y-2 text-blue-100/80">
+                                    <p className="text-sm leading-relaxed">
+                                        <strong className="text-blue-200">Focus Time</strong> is the percentage of your work time available for deep, uninterrupted work (not spent in meetings).
+                                    </p>
+                                    <div className="pt-2 border-t border-blue-500/20 space-y-2">
+                                        {data.timeOverview.focusHours !== undefined && data.timeOverview.totalWorkHours !== undefined ? (
+                                            <>
+                                                <div className="text-sm">
+                                                    <span className="text-blue-300 font-semibold">{data.timeOverview.focusHours} hours</span>
+                                                    <span className="text-blue-100/60"> available for focused work</span>
+                                                </div>
+                                                <div className="text-xs text-blue-100/50">
+                                                    Out of {data.timeOverview.totalWorkHours} total work hours ({data.timeOverview.meetingHours} hours in meetings)
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="text-sm">
+                                                <span className="text-blue-300 font-semibold">{Math.round((data.timeOverview.focusPercentage / 100) * 40)} hours</span>
+                                                <span className="text-blue-100/60"> estimated available for focused work</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </Section>
