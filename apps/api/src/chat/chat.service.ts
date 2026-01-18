@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../prisma/prisma.service';
 import { IntegrationsService } from '../integrations/integrations.service';
 import { DashboardService } from '../dashboard/dashboard.service';
@@ -35,6 +36,7 @@ export interface Message {
 export class ChatService {
     private readonly logger = new Logger(ChatService.name);
     private openai: OpenAI;
+    private anthropic: Anthropic;
 
     constructor(
         private configService: ConfigService,
@@ -44,9 +46,14 @@ export class ChatService {
         private codebaseAnalyzer: CodebaseAnalyzerService,
         private analyticsService: AnalyticsService
     ) {
-        const apiKey = this.configService.get<string>('OPENAI_API_KEY');
-        if (apiKey) {
-            this.openai = new OpenAI({ apiKey });
+        const openaiKey = this.configService.get<string>('OPENAI_API_KEY');
+        if (openaiKey) {
+            this.openai = new OpenAI({ apiKey: openaiKey });
+        }
+
+        const anthropicKey = this.configService.get<string>('ANTHROPIC_API_KEY');
+        if (anthropicKey) {
+            this.anthropic = new Anthropic({ apiKey: anthropicKey });
         }
     }
 
@@ -227,6 +234,19 @@ export class ChatService {
     async generateResponse(userId: string, query: string, history: any[] = []): Promise<ChatResponse> {
         this.logger.log(`Generatng response for query: "${query}"`);
 
+        // Get user's preferred chat model
+        let user = await this.prisma.user.findUnique({
+            where: { email: userId },
+            select: { chatModel: true },
+        });
+        if (!user) {
+            user = await this.prisma.user.findUnique({
+                where: { id: userId },
+                select: { chatModel: true },
+            });
+        }
+        const preferredModel = (user?.chatModel || 'openai') as 'openai' | 'claude';
+
         // 1. Fetch Context (Real Data Only)
         const context = await this.buildContext(userId, query);
 
@@ -353,7 +373,23 @@ You are answering questions about software architecture and code.
 `;
         }
 
-        systemPrompt += `
+        // Adjust prompt based on model preference
+        if (preferredModel === 'claude') {
+            systemPrompt += `
+# Response JSON Format (REQUIRED)
+You MUST return a valid JSON object. Do not include any text before or after the JSON.
+{
+  "answer": "Your structured markdown response here...",
+  "citations": [{"source": "Source Name", "type": "calendar", "count": 1}],
+  "insights": ["Pattern detected", "Key takeaway"],
+  "actions": [{"label": "Action Name", "type": "open_url", "uri": "url"}],
+  "followUps": ["Related question 1", "Related question 2"]
+}
+
+IMPORTANT: Return ONLY the JSON object, nothing else.
+`;
+        } else {
+            systemPrompt += `
 # Response JSON Format
 Return a strictly valid JSON object:
 {
@@ -364,6 +400,7 @@ Return a strictly valid JSON object:
   "followUps": ["Related question 1", "Related question 2"]
 }
 `;
+        }
 
         const userPrompt = `
 User Query: "${query}"
@@ -377,19 +414,60 @@ If the 'REAL DATA' object is empty or missing the requested info, explicitly sta
 `;
 
         try {
-            const completion = await this.openai.chat.completions.create({
-                model: 'gpt-4o',
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    ...history.map(msg => ({ role: msg.role, content: msg.content })),
-                    { role: 'user', content: userPrompt }
-                ],
-                response_format: { type: 'json_object' },
-                temperature: 0.3, // Lower temperature for factual accuracy
-            });
+            let content: string;
 
-            const content = completion.choices[0].message.content;
-            return JSON.parse(content || '{}');
+            if (preferredModel === 'claude' && this.anthropic) {
+                // Use Claude
+                const messages = [
+                    ...history.map(msg => ({
+                        role: msg.role === 'assistant' ? 'assistant' : 'user' as const,
+                        content: msg.content
+                    })),
+                    { role: 'user' as const, content: userPrompt }
+                ];
+
+                const response = await this.anthropic.messages.create({
+                    model: 'claude-3-5-sonnet-20241022',
+                    max_tokens: 2000,
+                    system: systemPrompt,
+                    messages: messages,
+                });
+
+                content = response.content[0].type === 'text' ? response.content[0].text : '';
+                
+                // Try to parse as JSON (Claude might return JSON)
+                try {
+                    return JSON.parse(content || '{}');
+                } catch {
+                    // If not JSON, wrap in answer field
+                    return {
+                        answer: content || "I couldn't format the response properly. Please try again.",
+                        citations: [],
+                        insights: [],
+                        actions: [],
+                        followUps: []
+                    };
+                }
+            } else {
+                // Use OpenAI (default)
+                if (!this.openai) {
+                    throw new Error('OpenAI API not configured');
+                }
+
+                const completion = await this.openai.chat.completions.create({
+                    model: 'gpt-4o',
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        ...history.map(msg => ({ role: msg.role, content: msg.content })),
+                        { role: 'user', content: userPrompt }
+                    ],
+                    response_format: { type: 'json_object' },
+                    temperature: 0.3, // Lower temperature for factual accuracy
+                });
+
+                content = completion.choices[0].message.content || '';
+                return JSON.parse(content || '{}');
+            }
 
         } catch (e) {
             this.logger.error('Error processing chat query', e);

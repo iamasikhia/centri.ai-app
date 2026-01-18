@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { Home, Users, Settings, LogOut, MessageCircle, CalendarCheck, Bell, Zap, Wrench, CheckSquare, Briefcase, Mic, Rocket, Sparkles, BookOpen, Newspaper, Moon, Sun, Search, Target, Loader2 } from 'lucide-react';
+import { Home, Users, Settings, LogOut, MessageCircle, CalendarCheck, Bell, Zap, Wrench, CheckSquare, Briefcase, Mic, Rocket, Sparkles, BookOpen, Newspaper, Moon, Sun, Search, Target, Loader2, CreditCard } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import { useTheme } from '@/components/theme-provider';
@@ -11,6 +11,8 @@ import { cn } from '@/lib/utils';
 import { useState, useEffect, useTransition } from 'react';
 import axios from 'axios';
 import { useTeamMode } from '@/contexts/team-mode-context';
+import { useSubscription } from '@/contexts/subscription-context';
+import { hasFeature } from '@/lib/subscription';
 
 
 export function Sidebar() {
@@ -24,6 +26,7 @@ export function Sidebar() {
     const [isPending, startTransition] = useTransition();
     const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
     const [featureFlags, setFeatureFlags] = useState<Record<string, boolean>>({});
+    const { tier } = useSubscription();
 
     // Reset navigatingTo when pathname changes (navigation complete)
     useEffect(() => {
@@ -133,16 +136,23 @@ export function Sidebar() {
     // Filter out engineering items if user doesn't have an engineering team
     // Filter out Slack-dependent items if user doesn't use Slack
     // Filter out items if feature flag is disabled
+    // Filter out Pro-only features for free tier
     const mainLinks = allMainLinks.filter(link => {
         if (link.isEngineering && !hasEngineeringTeam) return false;
         if (link.requiresSlack && !usesSlack) return false;
         if (link.featureKey && !isFeatureEnabled(link.featureKey)) return false;
+        
+        // Gate Pro features
+        if (link.href === '/codebase-overview' && !hasFeature(tier, 'codebaseIntelligence')) return false;
+        if (link.href === '/stakeholders' && !hasFeature(tier, 'stakeholderManagement')) return false;
+        
         return true;
     });
 
     const footerLinks = [
         { href: '/life-wrapped', label: 'Work Wrapped', icon: Sparkles, featureKey: 'feature-work-wrapped' },
         { href: '/settings/integrations', label: 'Integrations', icon: Zap, featureKey: 'feature-integrations' },
+        { href: '/settings/billing', label: 'Billing', icon: CreditCard, featureKey: 'feature-settings' },
         { href: '/settings', label: 'Settings', icon: Settings, featureKey: 'feature-settings' },
     ].filter(link => {
         // Settings should always be visible, but check other features

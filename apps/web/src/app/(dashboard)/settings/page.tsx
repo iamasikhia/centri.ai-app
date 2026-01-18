@@ -21,6 +21,8 @@ export default function SettingsPage() {
     const router = useRouter()
     const [mounted, setMounted] = React.useState(false)
     const [showPricingModal, setShowPricingModal] = React.useState(false)
+    const [chatModel, setChatModel] = React.useState<'openai' | 'claude'>('openai')
+    const [savingModel, setSavingModel] = React.useState(false)
 
     // Form states
     const [name, setName] = React.useState("")
@@ -30,6 +32,55 @@ export default function SettingsPage() {
         setMounted(true)
         if (session?.user?.name) setName(session.user.name)
     }, [session])
+
+    React.useEffect(() => {
+        if (mounted && session) {
+            fetchChatModel()
+        }
+    }, [mounted, session])
+
+    const fetchChatModel = async () => {
+        try {
+            const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+            const userId = session?.user?.email || 'default-user-id'
+            const res = await fetch(`${API_URL}/chat-settings/model`, {
+                headers: { 'x-user-id': userId }
+            })
+            if (res.ok) {
+                const data = await res.json()
+                setChatModel(data.model || 'openai')
+            }
+        } catch (e) {
+            console.error('Failed to fetch chat model:', e)
+        }
+    }
+
+    const handleModelChange = async (model: string) => {
+        setSavingModel(true)
+        try {
+            const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+            const userId = session?.user?.email || 'default-user-id'
+            const res = await fetch(`${API_URL}/chat-settings/model`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-id': userId
+                },
+                body: JSON.stringify({ model })
+            })
+            if (res.ok) {
+                setChatModel(model as 'openai' | 'claude')
+            } else {
+                console.error('Failed to update chat model')
+                alert('Failed to update chat model. Please try again.')
+            }
+        } catch (e) {
+            console.error('Failed to update chat model:', e)
+            alert('Failed to update chat model. Please try again.')
+        } finally {
+            setSavingModel(false)
+        }
+    }
 
     if (!mounted) return <SettingsSkeleton />
 
@@ -165,6 +216,22 @@ export default function SettingsPage() {
                     <CardDescription>Customize how the AI interacts with you.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                    <div className="space-y-2 max-w-sm">
+                        <Label htmlFor="chat-model">AI Chat Model</Label>
+                        <p className="text-sm text-muted-foreground">Choose which AI model to use for Centri assistant chat.</p>
+                        <NativeSelect
+                            id="chat-model"
+                            value={chatModel}
+                            onChange={(e) => handleModelChange(e.target.value)}
+                            disabled={savingModel}
+                        >
+                            <option value="openai">OpenAI (GPT-4o)</option>
+                            <option value="claude">Claude (Sonnet 3.5)</option>
+                        </NativeSelect>
+                        {savingModel && (
+                            <p className="text-xs text-muted-foreground">Saving...</p>
+                        )}
+                    </div>
                     <div className="flex items-center justify-between">
                         <div className="space-y-0.5">
                             <Label>AI Summaries</Label>

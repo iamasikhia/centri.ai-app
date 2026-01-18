@@ -28,6 +28,7 @@
         "class-validator": "^0.14.0",
         "date-fns": "^2.30.0",
         "googleapis": "170.0.0",
+        "@anthropic-ai/sdk": "^0.24.3",
         "openai": "^6.15.0",
         "passport": "^0.6.0",
         "passport-local": "^1.0.0",

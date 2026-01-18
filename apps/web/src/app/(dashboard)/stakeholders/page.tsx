@@ -12,8 +12,12 @@ import { ReminderBanner } from '@/components/stakeholders/reminder-banner';
 import { addDays, addWeeks, addMonths, differenceInDays } from 'date-fns';
 import { toast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useSubscription } from '@/contexts/subscription-context';
+import { hasFeature } from '@/lib/subscription';
+import { UpgradePrompt } from '@/components/subscription/upgrade-prompt';
 
 export default function StakeholdersPage() {
+    const { tier } = useSubscription();
     const [stakeholders, setStakeholders] = useState<Stakeholder[]>([]);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingStakeholder, setEditingStakeholder] = useState<Stakeholder | null>(null);
@@ -177,6 +181,19 @@ export default function StakeholdersPage() {
 
     const overdueCount = stakeholders.filter(s => getStatus(s.nextReachOutAt) === 'overdue').length;
     const dueSoonCount = stakeholders.filter(s => getStatus(s.nextReachOutAt) === 'due-soon').length;
+
+    // Gate access to Pro tier
+    if (!hasFeature(tier, 'stakeholderManagement')) {
+        return (
+            <div className="max-w-4xl mx-auto py-8">
+                <UpgradePrompt
+                    feature="Stakeholder Management"
+                    description="Track relationships, manage follow-ups, and maintain communication with all your stakeholders."
+                    requiredTier="pro"
+                />
+            </div>
+        );
+    }
 
     if (isLoading) {
         return (

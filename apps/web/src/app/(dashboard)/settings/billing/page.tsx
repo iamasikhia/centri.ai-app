@@ -20,6 +20,9 @@ import {
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { PricingModal } from '@/components/pricing-modal';
+import { useSubscription } from '@/contexts/subscription-context';
+import { SUBSCRIPTION_LIMITS, SubscriptionTier } from '@/lib/subscription';
+import { Loader2 } from 'lucide-react';
 
 interface SubscriptionStatus {
     tier: string;
@@ -46,11 +49,13 @@ const STATUS_DISPLAY: Record<string, { label: string; color: string; icon: typeo
 export default function BillingPage() {
     const { data: session } = useSession();
     const searchParams = useSearchParams();
+    const { tier, updateTier, isLoading: subscriptionLoading } = useSubscription();
     const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [showPricingModal, setShowPricingModal] = useState(false);
+    const [changingTier, setChangingTier] = useState(false);
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -147,7 +152,10 @@ export default function BillingPage() {
         setShowPricingModal(true);
     };
 
-    const tierInfo = subscription ? TIER_DISPLAY[subscription.tier as keyof typeof TIER_DISPLAY] || TIER_DISPLAY.free : TIER_DISPLAY.free;
+    // Use tier from subscription context (from database) as primary source
+    // Fall back to subscription.tier from Stripe if context tier is not available
+    const currentTier = tier || (subscription?.tier as SubscriptionTier) || 'free';
+    const tierInfo = TIER_DISPLAY[currentTier as keyof typeof TIER_DISPLAY] || TIER_DISPLAY.free;
     const statusInfo = subscription ? STATUS_DISPLAY[subscription.status] || STATUS_DISPLAY.free : STATUS_DISPLAY.free;
     const StatusIcon = statusInfo.icon;
 
@@ -228,7 +236,7 @@ export default function BillingPage() {
                                         </div>
                                     )}
 
-                                    {subscription.currentPeriodEnd && !subscription.cancelAtPeriodEnd && subscription.tier !== 'free' && (
+                                    {subscription.currentPeriodEnd && !subscription.cancelAtPeriodEnd && currentTier !== 'free' && (
                                         <div className="flex items-center gap-2 text-muted-foreground text-sm">
                                             <RefreshCw className="w-4 h-4" />
                                             <span>Renews on {format(new Date(subscription.currentPeriodEnd), 'MMMM d, yyyy')}</span>
@@ -237,7 +245,7 @@ export default function BillingPage() {
                                 </div>
 
                                 <div className="flex gap-3">
-                                    {subscription.tier === 'free' ? (
+                                    {currentTier === 'free' ? (
                                         <Button onClick={handleUpgrade}>
                                             <Sparkles className="w-4 h-4 mr-2" />
                                             Upgrade Plan
@@ -289,7 +297,7 @@ export default function BillingPage() {
             </Card>
 
             {/* Feature Comparison */}
-            {subscription?.tier === 'free' && (
+            {currentTier === 'free' && (
                 <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
                     <CardHeader>
                         <CardTitle className="text-primary">Unlock More with Pro</CardTitle>
@@ -319,6 +327,66 @@ export default function BillingPage() {
                 </Card>
             )}
 
+            {/* Testing: Tier Toggle (for development/testing only) */}
+            {process.env.NODE_ENV === 'development' && (
+                <Card className="border-amber-500/20 bg-amber-500/5">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                            <AlertTriangle className="w-5 h-5" />
+                            Testing: Change Subscription Tier
+                        </CardTitle>
+                        <CardDescription>
+                            This toggle is only visible in development mode. Use it to test different subscription tiers.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex items-center gap-4">
+                            <div className="flex-1">
+                                <label className="text-sm font-medium mb-2 block">Current Tier</label>
+                                <div className="flex items-center gap-3">
+                                    <select
+                                        value={tier}
+                                        onChange={async (e) => {
+                                            const newTier = e.target.value as SubscriptionTier;
+                                            setChangingTier(true);
+                                            try {
+                                                await updateTier(newTier);
+                                                // Refresh subscription data after tier change
+                                                await fetchSubscription();
+                                                setSuccessMessage(`Subscription tier changed to ${newTier}`);
+                                                setTimeout(() => setSuccessMessage(null), 5000);
+                                            } catch (error) {
+                                                console.error('Failed to update tier:', error);
+                                                alert('Failed to update subscription tier');
+                                            } finally {
+                                                setChangingTier(false);
+                                            }
+                                        }}
+                                        disabled={changingTier || subscriptionLoading}
+                                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        <option value="free">Free</option>
+                                        <option value="pro">Pro</option>
+                                        <option value="team">Team</option>
+                                        <option value="enterprise">Enterprise</option>
+                                    </select>
+                                    {changingTier && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+                                </div>
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                                <div className="font-medium mb-1">Tier Limits:</div>
+                                <div className="space-y-1 text-xs">
+                                    <div>Integrations: {SUBSCRIPTION_LIMITS[tier].integrations === -1 ? 'Unlimited' : SUBSCRIPTION_LIMITS[tier].integrations}</div>
+                                    <div>Meetings/month: {SUBSCRIPTION_LIMITS[tier].meetingsPerMonth === -1 ? 'Unlimited' : SUBSCRIPTION_LIMITS[tier].meetingsPerMonth}</div>
+                                    <div>Chat Copilot: {SUBSCRIPTION_LIMITS[tier].chatCopilot ? '✅' : '❌'}</div>
+                                    <div>Codebase Intel: {SUBSCRIPTION_LIMITS[tier].codebaseIntelligence ? '✅' : '❌'}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
             {/* Help Section */}
             <Card>
                 <CardContent className="py-6">
@@ -340,7 +408,7 @@ export default function BillingPage() {
             <PricingModal
                 open={showPricingModal}
                 onOpenChange={setShowPricingModal}
-                currentTier={subscription?.tier || 'free'}
+                currentTier={currentTier}
             />
         </div>
     );

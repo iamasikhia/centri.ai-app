@@ -24,6 +24,7 @@ model User {
   subscriptionStartDate DateTime?
   subscriptionEndDate   DateTime?
   trialEndsAt          DateTime?
+  chatModel            String?   @default("openai") // "openai" or "claude"
 
   integrations  Integrations[]
   meetings      Meeting[]

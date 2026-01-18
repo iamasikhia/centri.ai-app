@@ -17,7 +17,7 @@ import { X, Check, User, Calendar, Target, FileText, ArrowLeft, Loader2, CheckCi
 import { Button } from "@/components/ui/button";
 import { DetailedMetric } from "@/lib/dashboard-utils";
 
-import { Task, Meeting } from "@/lib/dashboard-utils";
+import { Task, Meeting, ProductFeature } from "@/lib/dashboard-utils";
 
 interface MetricDetailsSidebarProps {
     isOpen: boolean;
@@ -27,9 +27,10 @@ interface MetricDetailsSidebarProps {
     blockers?: Task[];
     meetings?: Meeting[];
     tasks?: Task[];
+    productFeatures?: ProductFeature[];
 }
 
-export function MetricDetailsSidebar({ isOpen, onClose, metric, githubData, blockers = [], meetings = [], tasks = [] }: MetricDetailsSidebarProps) {
+export function MetricDetailsSidebar({ isOpen, onClose, metric, githubData, blockers = [], meetings = [], tasks = [], productFeatures = [] }: MetricDetailsSidebarProps) {
     const [selectedItem, setSelectedItem] = useState<any | null>(null);
     const [isConverting, setIsConverting] = useState(false);
     const [isDismissing, setIsDismissing] = useState(false);
@@ -203,6 +204,114 @@ export function MetricDetailsSidebar({ isOpen, onClose, metric, githubData, bloc
                 description: `Release ${r.tag_name} in ${r.repo}`,
                 date: new Date(r.published_at).toLocaleString()
             }));
+        } else if (metric.id === 'commits') {
+            type = 'commit';
+            const commits = githubData.commits || [];
+            
+            // Filter to last 7 days for count
+            const now = new Date();
+            const commitsLast7d = commits.filter((c: any) => {
+                const commitDate = new Date(c.date);
+                const daysDiff = Math.floor((now.getTime() - commitDate.getTime()) / (1000 * 60 * 60 * 24));
+                return daysDiff <= 7;
+            });
+
+            actualValue = commitsLast7d.length;
+
+            items = commits.slice(0, 20).map((c: any) => ({
+                id: c.sha,
+                title: c.message || 'Commit',
+                description: `By ${c.author} in ${c.repo}`,
+                date: new Date(c.date).toLocaleString()
+            }));
+        } else if (metric.id === 'prs-merged') {
+            type = 'pr';
+            const prs = githubData.prs || [];
+            
+            // Filter to merged PRs in last 7 days
+            const now = new Date();
+            const mergedPRs = prs.filter((pr: any) => {
+                if (!pr.merged || !pr.merged_at) return false;
+                const mergedDate = new Date(pr.merged_at);
+                const daysDiff = Math.floor((now.getTime() - mergedDate.getTime()) / (1000 * 60 * 60 * 24));
+                return daysDiff <= 7;
+            });
+
+            actualValue = mergedPRs.length;
+
+            items = mergedPRs.slice(0, 20).map((pr: any) => ({
+                id: pr.id || pr.number,
+                title: pr.title || 'Pull Request',
+                description: `Merged by ${pr.merged_by || 'Unknown'} in ${pr.repo || 'Unknown repo'}`,
+                date: new Date(pr.merged_at).toLocaleString()
+            }));
+        } else if (metric.id === 'meetings') {
+            type = 'meeting';
+            items = meetings.map((m: any) => ({
+                id: m.id,
+                title: m.title || 'Meeting',
+                description: `${m.attendeesJson ? JSON.parse(m.attendeesJson).length : 0} attendees`,
+                date: new Date(m.startTime).toLocaleString()
+            }));
+
+            actualValue = items.length;
+        } else if (metric.id === 'tasks') {
+            type = 'task';
+            // Show completed tasks
+            items = tasks.filter(t => {
+                const s = t.status?.toLowerCase() || '';
+                return s === 'done' || s === 'completed';
+            }).slice(0, 20).map(t => ({
+                id: t.id,
+                title: t.title,
+                description: `Assigned to: ${t.assigneeEmail || 'Unassigned'}`,
+                date: t.updatedAt ? new Date(t.updatedAt).toLocaleDateString() : new Date().toLocaleDateString(),
+                status: t.status || 'Completed',
+                owner: t.assigneeEmail || 'Unassigned'
+            }));
+
+            actualValue = items.length;
+        } else if (metric.id === 'features-completed' || metric.id === 'eng-changes') {
+            type = 'feature';
+            // "Features Completed" metric actually represents merged PRs (work items ready for users)
+            // Show merged PRs from the last 7 days
+            if (githubData && githubData.prs) {
+                const now = new Date();
+                const mergedPRs = githubData.prs.filter((pr: any) => {
+                    if (!pr.merged || !pr.merged_at) return false;
+                    const mergedDate = new Date(pr.merged_at);
+                    const daysDiff = Math.floor((now.getTime() - mergedDate.getTime()) / (1000 * 60 * 60 * 24));
+                    return daysDiff <= 7;
+                });
+
+                actualValue = mergedPRs.length;
+
+                items = mergedPRs.map((pr: any) => ({
+                    id: pr.id || pr.number,
+                    title: pr.title || 'Pull Request',
+                    description: `Merged by ${pr.merged_by || pr.author || 'Unknown'} in ${pr.repo || 'Unknown repo'}`,
+                    date: new Date(pr.merged_at).toLocaleString(),
+                    status: 'Merged',
+                    repo: pr.repo,
+                    author: pr.author || pr.merged_by
+                }));
+            } else {
+                // Fallback: Show completed product features if no GitHub data
+                items = productFeatures
+                    .filter(f => f.status === 'Completed' || f.completion === 100 || f.stage === 'Ready to Ship')
+                    .map(f => ({
+                        id: f.id,
+                        title: f.name,
+                        description: f.aiExplanation || `Completed feature`,
+                        date: f.expectedCompletionDate ? `Expected: ${f.expectedCompletionDate}` : 'No date',
+                        status: f.status,
+                        completion: f.completion,
+                        stage: f.stage,
+                        confidenceLevel: f.confidenceLevel
+                    }));
+
+                actualValue = items.length;
+            }
         }
     }
 
@@ -246,7 +355,12 @@ export function MetricDetailsSidebar({ isOpen, onClose, metric, githubData, bloc
                                             type === 'blocker' ? `Active Blockers (${displayCount})` :
                                                 type === 'decision' ? `Decisions Made (${displayCount})` :
                                                     type === 'in-progress' ? `In Progress Tasks (${displayCount})` :
-                                                        `Recent Activity (${displayCount})`}
+                                                        type === 'commit' ? `Recent Commits (${displayCount})` :
+                                                            type === 'pr' ? `Merged Pull Requests (${displayCount})` :
+                                                                type === 'meeting' ? `Meetings (${displayCount})` :
+                                                                    type === 'task' ? `Completed Tasks (${displayCount})` :
+                                                                        type === 'feature' ? `Completed Features (${displayCount})` :
+                                                                            `Recent Activity (${displayCount})`}
                                     </h3>
                                     <div className="space-y-3">
                                         {displayItems.map((item) => (
@@ -271,6 +385,26 @@ export function MetricDetailsSidebar({ isOpen, onClose, metric, githubData, bloc
                                                     {item.status && (
                                                         <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200 uppercase">
                                                             {item.status}
+                                                        </span>
+                                                    )}
+                                                    {item.completion !== undefined && (
+                                                        <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200">
+                                                            {item.completion}% Complete
+                                                        </span>
+                                                    )}
+                                                    {item.stage && (
+                                                        <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-200">
+                                                            {item.stage}
+                                                        </span>
+                                                    )}
+                                                    {item.repo && (
+                                                        <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-200">
+                                                            📦 {item.repo}
+                                                        </span>
+                                                    )}
+                                                    {item.author && (
+                                                        <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-200">
+                                                            👤 {item.author}
                                                         </span>
                                                     )}
                                                 </div>

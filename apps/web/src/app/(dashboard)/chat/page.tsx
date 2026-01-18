@@ -2,6 +2,9 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
+import { useSubscription } from '@/contexts/subscription-context';
+import { hasFeature } from '@/lib/subscription';
+import { UpgradePrompt } from '@/components/subscription/upgrade-prompt';
 import {
     Send, Loader2, Sparkles, Bot, User,
     Calendar, MessageSquare, Github, FileText, Video,
@@ -43,6 +46,7 @@ const SourceIcons: Record<string, any> = {
 
 export default function ChatPage() {
     const { data: session } = useSession();
+    const { tier } = useSubscription();
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);

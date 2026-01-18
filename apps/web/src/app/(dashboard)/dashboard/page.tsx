@@ -705,6 +705,7 @@ export default function DashboardPage() {
                                 momentumData={momentumToDisplay}
                                 selectedRepo={selectedRepo}
                                 showEngineering={hasEngineeringTeam}
+                                onMetricClick={(metric) => setSelectedMetric(metric)}
                             />
                         </div>
                     )}
@@ -964,6 +965,7 @@ export default function DashboardPage() {
                 blockers={viewModel?.blockers || []} // Pass Blockers
                 meetings={viewModel?.meetings || []} // Pass Meetings (for decisions)
                 tasks={viewModel?.allTasks || []} // Pass all tasks for In Progress
+                productFeatures={viewModel?.product || []} // Pass product features for features-completed
             />
             {
                 explanationMetric && (

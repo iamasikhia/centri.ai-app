@@ -9,10 +9,18 @@ import { Mic, Search, RefreshCw, Calendar, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useSubscription } from '@/contexts/subscription-context';
+import { getFeatureLimit, isWithinLimit, SUBSCRIPTION_LIMITS } from '@/lib/subscription';
+import { useRouter } from 'next/navigation';
+import { Lock } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { PricingModal } from '@/components/pricing-modal';
 
 export default function MeetingsPage() {
+    const { tier } = useSubscription();
+    const router = useRouter();
     const [meetings, setMeetings] = useState<Meeting[]>([]);
     const [isUploadOpen, setIsUploadOpen] = useState(false);
     const [isImportOpen, setIsImportOpen] = useState(false);
@@ -20,9 +28,36 @@ export default function MeetingsPage() {
     const [isSyncing, setIsSyncing] = useState(false);
     const [calendarState, setCalendarState] = useState<'loading' | 'connected' | 'disconnected' | 'error'>('loading');
     const [searchQuery, setSearchQuery] = useState('');
+    const [showPricingModal, setShowPricingModal] = useState(false);
 
-    // Default tab
-    const [activeTab, setActiveTab] = useState<string>('upcoming');
+    // Check meeting limits
+    const meetingLimit = getFeatureLimit(tier, 'meetingsPerMonth') as number;
+    const now = new Date();
+    const monthStart = startOfMonth(now);
+    const monthEnd = endOfMonth(now);
+    const meetingsThisMonth = meetings.filter(m => {
+        const meetingDate = new Date(m.date);
+        return meetingDate >= monthStart && meetingDate <= monthEnd;
+    }).length;
+    const canAddMeeting = meetingLimit === -1 || meetingsThisMonth < meetingLimit;
+
+    // Default tab - load from localStorage if available
+    const [activeTab, setActiveTab] = useState<string>(() => {
+        if (typeof window !== 'undefined') {
+            const savedTab = localStorage.getItem('meetings_activeTab');
+            if (savedTab && ['upcoming', 'past', 'all'].includes(savedTab)) {
+                return savedTab;
+            }
+        }
+        return 'upcoming';
+    });
+
+    // Save tab selection to localStorage whenever it changes
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('meetings_activeTab', activeTab);
+        }
+    }, [activeTab]);
 
     const fetchStatus = useCallback(async () => {
         const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -149,9 +184,9 @@ export default function MeetingsPage() {
     });
 
     // Filter Logic
-    const now = new Date();
-    const upcomingMeetings = filteredMeetings.filter(m => new Date(m.date) > now).reverse(); // Ascending for upcoming
-    const pastMeetings = filteredMeetings.filter(m => new Date(m.date) <= now);
+    const currentTime = new Date();
+    const upcomingMeetings = filteredMeetings.filter(m => new Date(m.date) > currentTime).reverse(); // Ascending for upcoming
+    const pastMeetings = filteredMeetings.filter(m => new Date(m.date) <= currentTime);
 
     // Group Past Meetings by Month
     const groupedPastMeetings = pastMeetings.reduce((groups, meeting) => {
@@ -212,6 +247,16 @@ export default function MeetingsPage() {
                     <p className="text-muted-foreground text-lg max-w-2xl">
                         AI-generated briefings, decisions, and action items from your team syncs and 1:1s.
                     </p>
+                    {meetingLimit !== -1 && (
+                        <div className="mt-2 text-sm text-muted-foreground">
+                            {meetingsThisMonth} of {meetingLimit} meetings used this month
+                            {!canAddMeeting && (
+                                <span className="ml-2 text-amber-600 dark:text-amber-400">
+                                    • Limit reached - <button onClick={() => setShowPricingModal(true)} className="underline hover:text-amber-700">Upgrade to Pro</button> for unlimited
+                                </span>
+                            )}
+                        </div>
+                    )}
                 </div>
                 <div className="flex gap-3">
                     <button
@@ -225,13 +270,24 @@ export default function MeetingsPage() {
                         <RefreshCw className={cn("w-4 h-4", isSyncing && "animate-spin")} />
                         <span>{isSyncing ? 'Syncing...' : 'Sync Transcripts'}</span>
                     </button>
-                    <button
-                        onClick={() => setIsUploadOpen(true)}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium shadow-sm hover:opacity-90 transition-all"
-                    >
-                        <Mic className="w-4 h-4" />
-                        <span>Upload Transcript</span>
-                    </button>
+                    {!canAddMeeting && meetingLimit !== -1 ? (
+                        <Button
+                            onClick={() => router.push('/pricing')}
+                            className="flex items-center gap-2"
+                            variant="default"
+                        >
+                            <Lock className="w-4 h-4" />
+                            <span>Upgrade to Upload ({meetingsThisMonth}/{meetingLimit})</span>
+                        </Button>
+                    ) : (
+                        <button
+                            onClick={() => setIsUploadOpen(true)}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium shadow-sm hover:opacity-90 transition-all"
+                        >
+                            <Mic className="w-4 h-4" />
+                            <span>Upload Transcript</span>
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -325,6 +381,12 @@ export default function MeetingsPage() {
                 open={isImportOpen}
                 onClose={() => setIsImportOpen(false)}
                 onImport={handleImport}
+            />
+
+            <PricingModal
+                open={showPricingModal}
+                onOpenChange={setShowPricingModal}
+                currentTier={tier}
             />
         </div>
     );

@@ -3,10 +3,13 @@
 
 import { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Check, X, ExternalLink, Plus, Search } from 'lucide-react';
+import { Check, X, ExternalLink, Plus, Search, Lock } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useSubscription } from '@/contexts/subscription-context';
+import { getFeatureLimit, isWithinLimit, SUBSCRIPTION_LIMITS } from '@/lib/subscription';
+import { useRouter } from 'next/navigation';
 
 const PROVIDERS = [
   {
@@ -130,6 +133,8 @@ import { useSession } from 'next-auth/react';
 
 export default function IntegrationsPage() {
   const { data: session, status } = useSession();
+  const { tier } = useSubscription();
+  const router = useRouter();
   const [connections, setConnections] = useState<any[]>([]);
   const [config, setConfig] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
@@ -138,6 +143,11 @@ export default function IntegrationsPage() {
   const [submitted, setSubmitted] = useState(false);
 
   const userId = 'default-user-id'; // Temporarily use default ID to match existing integrations
+
+  // Check integration limits
+  const integrationLimit = getFeatureLimit(tier, 'integrations') as number;
+  const activeConnections = connections.filter(c => c.connected).length;
+  const canAddIntegration = integrationLimit === -1 || activeConnections < integrationLimit;
 
   const fetchData = async (forceRefresh = false) => {
     if (status === 'loading') return;
@@ -212,6 +222,18 @@ export default function IntegrationsPage() {
   }, [status, userId]);
 
   const handleConnect = async (provider: string) => {
+    // Check integration limit
+    if (!canAddIntegration) {
+      const confirmUpgrade = confirm(
+        `You've reached the integration limit for your ${tier} plan (${integrationLimit} integration${integrationLimit !== 1 ? 's' : ''}).\n\n` +
+        `Upgrade to Pro for unlimited integrations. Would you like to upgrade now?`
+      );
+      if (confirmUpgrade) {
+        router.push('/pricing');
+      }
+      return;
+    }
+
     // ... existing handleConnect logic ...
     const stubs: string[] = [];
     if (stubs.includes(provider)) {
@@ -353,12 +375,29 @@ export default function IntegrationsPage() {
                       </span>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => handleConnect(p.id)}
-                      className="w-full py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
-                    >
-                      Connect <ExternalLink className="w-3 h-3" />
-                    </button>
+                    <div className="w-full">
+                      {!canAddIntegration ? (
+                        <div className="flex flex-col gap-2">
+                          <button
+                            onClick={() => router.push('/pricing')}
+                            className="w-full py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                          >
+                            <Lock className="w-3 h-3" />
+                            Upgrade to Connect
+                          </button>
+                          <span className="text-[10px] text-muted-foreground text-center">
+                            {activeConnections}/{integrationLimit === -1 ? '∞' : integrationLimit} used
+                          </span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleConnect(p.id)}
+                          className="w-full py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                        >
+                          Connect <ExternalLink className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

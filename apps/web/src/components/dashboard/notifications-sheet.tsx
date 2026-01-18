@@ -23,7 +23,10 @@ export function NotificationsSheet() {
     const [refreshing, setRefreshing] = useState(false);
 
     // Poll for unread count
-    const fetchUpdates = async () => {
+    const fetchUpdates = async (silent = false) => {
+        if (!silent) {
+            setLoading(true);
+        }
         try {
             const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
             const res = await axios.get(`${API_URL}/updates`, {
@@ -33,14 +36,30 @@ export function NotificationsSheet() {
                 setUpdates(res.data);
                 setUnreadCount(res.data.filter((u: any) => !u.isRead).length);
             }
-        } catch (e) { }
+        } catch (e) {
+            console.error('Failed to fetch notifications:', e);
+        } finally {
+            if (!silent) {
+                setLoading(false);
+            }
+        }
     };
 
     useEffect(() => {
-        fetchUpdates();
-        const interval = setInterval(fetchUpdates, 10000); // 10s polling
+        fetchUpdates(true); // Initial load (silent)
+        // Auto-refresh every 10 seconds (silent updates)
+        const interval = setInterval(() => {
+            fetchUpdates(true);
+        }, 10000); // 10 second polling
         return () => clearInterval(interval);
     }, []);
+
+    // Also refresh when sheet is opened
+    useEffect(() => {
+        if (open) {
+            fetchUpdates(); // Full refresh when opened
+        }
+    }, [open]);
 
     const handleRefresh = async () => {
         setRefreshing(true);

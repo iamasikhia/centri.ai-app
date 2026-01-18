@@ -13,6 +13,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import dynamic from 'next/dynamic';
+import { useSubscription } from '@/contexts/subscription-context';
+import { hasFeature } from '@/lib/subscription';
+import { UpgradePrompt } from '@/components/subscription/upgrade-prompt';
 
 const MermaidChart = dynamic(() => import('@/components/mermaid-chart').then(mod => mod.MermaidChart), {
     loading: () => <div className="h-64 w-full animate-pulse bg-muted rounded-xl" />,
@@ -51,6 +54,7 @@ interface CodebaseExplanation {
 export default function CodebaseOverviewPage() {
     const { data: session, status } = useSession();
     const router = useRouter();
+    const { tier } = useSubscription();
 
     const userId = 'default-user-id'; // Use default ID to match existing integrations
 
@@ -275,6 +279,19 @@ export default function CodebaseOverviewPage() {
     }
 
     const totalBytes = Object.values(analysis?.languages || {}).reduce((a, b) => a + b, 0);
+
+    // Gate access to Pro tier
+    if (!hasFeature(tier, 'codebaseIntelligence')) {
+        return (
+            <div className="max-w-4xl mx-auto py-8">
+                <UpgradePrompt
+                    feature="Codebase Intelligence"
+                    description="Understand any codebase with AI-powered explanations, architecture diagrams, and intelligent Q&A."
+                    requiredTier="pro"
+                />
+            </div>
+        );
+    }
 
     return (
         <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto pb-20">

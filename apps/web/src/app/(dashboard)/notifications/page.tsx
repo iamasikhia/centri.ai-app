@@ -14,6 +14,11 @@ export default function NotificationsPage() {
 
     useEffect(() => {
         fetchUpdates();
+        // Auto-refresh every 10 seconds
+        const interval = setInterval(() => {
+            fetchUpdates();
+        }, 10000); // 10 second polling
+        return () => clearInterval(interval);
     }, []);
 
     const fetchUpdates = async () => {

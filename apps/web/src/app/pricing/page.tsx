@@ -34,8 +34,8 @@ const PRICING_TIERS = [
     },
     {
         id: 'pro',
-        name: 'Pro',
-        description: 'Founder Plan - This replaces Slack digging, GitHub guessing, and meeting chaos.',
+        name: 'Pro - Individual',
+        description: 'PM/Founder Plan - This replaces Slack digging, GitHub guessing, and meeting chaos.',
         price: 29,
         priceLabel: '$29',
         period: '/month',
@@ -56,6 +56,31 @@ const PRICING_TIERS = [
         highlighted: true,
         icon: Sparkles,
         badge: 'Most Popular',
+    },
+    {
+        id: 'team',
+        name: 'Team',
+        description: 'Collaboration Plan - Perfect for small teams working together',
+        price: 25,
+        priceLabel: '$25',
+        period: '/user/month',
+        features: [
+            '5 users',
+            'Unlimited integrations',
+            'Unlimited meetings',
+            'AI meeting summaries',
+            'Weekly executive brief',
+            'Product intelligence dashboard',
+            'Codebase intelligence (non-technical)',
+            'Chat copilot',
+            'Updates & newsletters',
+            'Stakeholder management',
+            'Todo + calendar sync',
+            'Priority support'
+        ],
+        cta: 'Start Free Trial',
+        highlighted: false,
+        icon: Users,
     },
     {
         id: 'enterprise',
@@ -213,7 +238,7 @@ export default function PricingPage() {
 
             {/* Pricing Cards */}
             <div className="max-w-7xl mx-auto px-6 pb-24">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 lg:gap-10">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-10">
                     {PRICING_TIERS.map((tier) => {
                         const Icon = tier.icon;
                         const isNoFeature = (feature: string) => feature.toLowerCase().startsWith('no ');

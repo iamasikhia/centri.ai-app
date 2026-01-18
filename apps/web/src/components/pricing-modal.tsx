@@ -22,7 +22,7 @@ const PRICING_TIERS = [
         description: 'Discovery Plan - Trial without a credit card',
         price: 0,
         priceLabel: '$0',
-        period: 'forever',
+        period: '',
         features: [
             '1 user',
             '1 integration (Google Calendar or Slack)',
@@ -39,8 +39,8 @@ const PRICING_TIERS = [
     },
     {
         id: 'pro',
-        name: 'Pro',
-        description: 'Founder Plan - Replaces Slack digging, GitHub guessing, and meeting chaos',
+        name: 'Pro - Individual',
+        description: 'PM/Founder Plan - Replaces Slack digging, GitHub guessing, and meeting chaos',
         price: 29,
         priceLabel: '$29',
         period: '/month',
@@ -61,6 +61,31 @@ const PRICING_TIERS = [
         highlighted: true,
         icon: Sparkles,
         badge: 'Most Popular',
+    },
+    {
+        id: 'team',
+        name: 'Team',
+        description: 'Collaboration Plan - Perfect for small teams working together',
+        price: 25,
+        priceLabel: '$25',
+        period: '/user/month',
+        features: [
+            '5 users',
+            'Unlimited integrations',
+            'Unlimited meetings',
+            'AI meeting summaries',
+            'Weekly executive brief',
+            'Product intelligence dashboard',
+            'Codebase intelligence',
+            'Chat copilot',
+            'Updates & newsletters',
+            'Stakeholder management',
+            'Todo + calendar sync',
+            'Priority support'
+        ],
+        cta: 'Upgrade to Team',
+        highlighted: false,
+        icon: Users,
     },
     {
         id: 'enterprise',
@@ -183,7 +208,7 @@ export function PricingModal({ open, onOpenChange, currentTier = 'free' }: Prici
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto p-0">
+            <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto p-0">
                 {/* Header */}
                 <div className="sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 z-10 px-6 pt-6 pb-4 border-b">
                     <DialogHeader>
@@ -229,7 +254,7 @@ export function PricingModal({ open, onOpenChange, currentTier = 'free' }: Prici
 
                 {/* Pricing Cards */}
                 <div className="p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
                         {PRICING_TIERS.map((tier) => {
                             const Icon = tier.icon;
                             const isCurrentPlan = tier.id === currentTier;
@@ -302,27 +327,34 @@ export function PricingModal({ open, onOpenChange, currentTier = 'free' }: Prici
                                     </ul>
 
                                     {/* CTA Button */}
-                                    <Button
-                                        className={cn(
-                                            "w-full font-semibold",
-                                            tier.highlighted && "shadow-md hover:shadow-lg"
+                                    <div className="space-y-2">
+                                        <Button
+                                            className={cn(
+                                                "w-full font-semibold",
+                                                tier.highlighted && "shadow-md hover:shadow-lg"
+                                            )}
+                                            variant={tier.highlighted ? "default" : "outline"}
+                                            size="default"
+                                            onClick={() => handleSelectPlan(tier.id)}
+                                            disabled={loadingTier === tier.id || isCurrentPlan}
+                                        >
+                                            {loadingTier === tier.id ? (
+                                                <>
+                                                    <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
+                                                    Loading...
+                                                </>
+                                            ) : isCurrentPlan ? (
+                                                'Current Plan'
+                                            ) : (
+                                                tier.cta
+                                            )}
+                                        </Button>
+                                        {isCurrentPlan && (
+                                            <p className="text-xs text-center text-muted-foreground">
+                                                Ends in 30 days
+                                            </p>
                                         )}
-                                        variant={tier.highlighted ? "default" : "outline"}
-                                        size="default"
-                                        onClick={() => handleSelectPlan(tier.id)}
-                                        disabled={loadingTier === tier.id || isCurrentPlan}
-                                    >
-                                        {loadingTier === tier.id ? (
-                                            <>
-                                                <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
-                                                Loading...
-                                            </>
-                                        ) : isCurrentPlan ? (
-                                            'Current Plan'
-                                        ) : (
-                                            tier.cta
-                                        )}
-                                    </Button>
+                                    </div>
                                 </div>
                             );
                         })}

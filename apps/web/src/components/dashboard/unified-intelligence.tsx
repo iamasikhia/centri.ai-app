@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import {
     Brain, MessageSquare, GitBranch, Users, CheckCircle2,
     AlertTriangle, RefreshCw, Sparkles, Mic, GitMerge, GitPullRequest,
@@ -44,7 +45,7 @@ interface Props {
     showEngineering?: boolean;
 }
 
-export default function UnifiedIntelligence({ momentumData, selectedRepo, showEngineering = true }: Props) {
+export default function UnifiedIntelligence({ momentumData, selectedRepo, showEngineering = true, onMetricClick }: Props & { onMetricClick?: (metric: any) => void }) {
     const [data, setData] = useState<UnifiedIntelligenceData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -157,12 +158,30 @@ export default function UnifiedIntelligence({ momentumData, selectedRepo, showEn
                         label="Meetings"
                         value={momentumData?.meetingsCompleted ?? data?.summary.meetingsThisWeek ?? 0}
                         source="Calendar"
+                        onClick={onMetricClick ? () => onMetricClick({
+                            id: 'meetings',
+                            title: 'Meetings Completed',
+                            value: momentumData?.meetingsCompleted ?? data?.summary.meetingsThisWeek ?? 0,
+                            description: 'Total meetings completed',
+                            trendLabel: 'Calendar',
+                            trendDirection: 'up',
+                            source: 'internal'
+                        }) : undefined}
                     />
                     <StatCell
                         icon={<CheckCircle2 className="w-4 h-4 text-emerald-500" />}
                         label="Tasks Done"
                         value={momentumData?.tasksCompleted ?? 0}
                         source="Internal"
+                        onClick={onMetricClick ? () => onMetricClick({
+                            id: 'tasks',
+                            title: 'Tasks Completed',
+                            value: momentumData?.tasksCompleted ?? 0,
+                            description: 'Total tasks completed',
+                            trendLabel: 'Productivity',
+                            trendDirection: 'up',
+                            source: 'internal'
+                        }) : undefined}
                     />
                     {showEngineering && (
                         <>
@@ -171,12 +190,30 @@ export default function UnifiedIntelligence({ momentumData, selectedRepo, showEn
                                 label="Commits"
                                 value={data?.summary.commitsCount ?? 0}
                                 source="GitHub"
+                                onClick={onMetricClick ? () => onMetricClick({
+                                    id: 'commits',
+                                    title: 'Commits',
+                                    value: data?.summary.commitsCount ?? 0,
+                                    description: 'Total commits made',
+                                    trendLabel: 'GitHub',
+                                    trendDirection: 'up',
+                                    source: 'github'
+                                }) : undefined}
                             />
                             <StatCell
                                 icon={<GitMerge className="w-4 h-4 text-indigo-500" />}
                                 label="PRs Merged"
                                 value={data?.summary.mergedPrsCount ?? 0}
                                 source="GitHub"
+                                onClick={onMetricClick ? () => onMetricClick({
+                                    id: 'prs-merged',
+                                    title: 'PRs Merged',
+                                    value: data?.summary.mergedPrsCount ?? 0,
+                                    description: 'Pull requests merged',
+                                    trendLabel: 'GitHub',
+                                    trendDirection: 'up',
+                                    source: 'github'
+                                }) : undefined}
                             />
                         </>
                     )}
