@@ -23,6 +23,7 @@ export function Sidebar() {
     const [usesSlack, setUsesSlack] = useState(true); // Default to true, update from localStorage
     const [isPending, startTransition] = useTransition();
     const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
+    const [featureFlags, setFeatureFlags] = useState<Record<string, boolean>>({});
 
     // Reset navigatingTo when pathname changes (navigation complete)
     useEffect(() => {
@@ -52,6 +53,27 @@ export function Sidebar() {
         // Listen for storage changes (in case user updates in another tab)
         window.addEventListener('storage', checkSlackIntegration);
         return () => window.removeEventListener('storage', checkSlackIntegration);
+    }, []);
+
+    // Fetch feature flags
+    useEffect(() => {
+        const fetchFeatureFlags = async () => {
+            try {
+                const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+                const res = await axios.get(`${API_URL}/features`);
+                if (res.data && Array.isArray(res.data)) {
+                    const flags: Record<string, boolean> = {};
+                    res.data.forEach((flag: any) => {
+                        flags[flag.key] = flag.enabled;
+                    });
+                    setFeatureFlags(flags);
+                }
+            } catch (e) {
+                // Silent error - defaults will be used
+            }
+        };
+
+        fetchFeatureFlags();
     }, []);
 
     // Poll for notifications
@@ -88,28 +110,44 @@ export function Sidebar() {
 
     // Engineering-related items are marked with isEngineering: true
     // Slack-dependent items are marked with requiresSlack: true
+    // Feature flag keys are mapped to each link
     const allMainLinks = [
-        { href: '/dashboard', label: 'Dashboard', icon: Home },
-        { href: '/meetings', label: 'Meetings', icon: Mic },
-        { href: '/codebase-overview', label: 'Codebase Intelligence', icon: BookOpen, isEngineering: true },
-        { href: '/todos', label: 'Tasks', icon: CheckSquare },
-        { href: '/questions', label: 'CheckIns', icon: CalendarCheck, requiresSlack: true },
-        { href: '/stakeholders', label: 'Stakeholders', icon: Briefcase },
+        { href: '/dashboard', label: 'Dashboard', icon: Home, featureKey: 'feature-dashboard' },
+        { href: '/meetings', label: 'Meetings', icon: Mic, featureKey: 'feature-meetings' },
+        { href: '/codebase-overview', label: 'Codebase Intelligence', icon: BookOpen, isEngineering: true, featureKey: 'feature-codebase' },
+        { href: '/todos', label: 'Tasks', icon: CheckSquare, featureKey: 'feature-tasks' },
+        { href: '/questions', label: 'CheckIns', icon: CalendarCheck, requiresSlack: true, featureKey: 'feature-checkins' },
+        { href: '/stakeholders', label: 'Stakeholders', icon: Briefcase, featureKey: 'feature-stakeholders' },
     ];
+
+    // Helper function to check if a feature is enabled (defaults to true if not set)
+    const isFeatureEnabled = (featureKey: string): boolean => {
+        if (featureFlags.hasOwnProperty(featureKey)) {
+            return featureFlags[featureKey];
+        }
+        return true; // Default to enabled if flag not found
+    };
 
     // Filter out engineering items if user doesn't have an engineering team
     // Filter out Slack-dependent items if user doesn't use Slack
+    // Filter out items if feature flag is disabled
     const mainLinks = allMainLinks.filter(link => {
         if (link.isEngineering && !hasEngineeringTeam) return false;
         if (link.requiresSlack && !usesSlack) return false;
+        if (link.featureKey && !isFeatureEnabled(link.featureKey)) return false;
         return true;
     });
 
     const footerLinks = [
-        { href: '/life-wrapped', label: 'Work Wrapped', icon: Sparkles },
-        { href: '/settings/integrations', label: 'Integrations', icon: Zap },
-        { href: '/settings', label: 'Settings', icon: Settings },
-    ];
+        { href: '/life-wrapped', label: 'Work Wrapped', icon: Sparkles, featureKey: 'feature-work-wrapped' },
+        { href: '/settings/integrations', label: 'Integrations', icon: Zap, featureKey: 'feature-integrations' },
+        { href: '/settings', label: 'Settings', icon: Settings, featureKey: 'feature-settings' },
+    ].filter(link => {
+        // Settings should always be visible, but check other features
+        if (link.href === '/settings') return true;
+        if (link.featureKey && !isFeatureEnabled(link.featureKey)) return false;
+        return true;
+    });
 
     const renderLink = (link: typeof mainLinks[0]) => {
         // Check if a more specific sidebar link is currently active (e.g. /settings/integrations vs /settings)
